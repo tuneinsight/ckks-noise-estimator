@@ -2,7 +2,7 @@ module github.com/tuneinsight/ckks-bootstrapping-precision
 
 go 1.19
 
-require github.com/tuneinsight/lattigo/v4 v4.1.1-0.20230105094114-718dfab62182
+require github.com/tuneinsight/lattigo/v4 v4.1.1-0.20230107225250-baa9b3676e23
 
 require (
 	golang.org/x/crypto v0.0.0-20220926161630-eccd6366d1be // indirect

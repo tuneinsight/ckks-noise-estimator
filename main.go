@@ -15,20 +15,10 @@ import (
 )
 
 var (
-	LogN = 16
-	Q    = []uint64{
-		0xffffffffffc0001, // 60 Q0
-		0x200000440001,    // 45
-		0x200000500001,    // 45
-		0x1fffff980001,    // 45
-		0x200000c80001,    // 45
-	}
-	P = []uint64{
-		0x1fffffffffe00001, // Pi 61
-		0x1fffffffffc80001, // Pi 61
-	}
-	LogSlots = 14
-	NbRuns   = 32
+	LogN     = 16                     // Log2 ring degree
+	LogSlots = 14                     // Log2 #slots
+	LogScale = 45                     // Log2 scaling factor
+	NbRuns   = 32                     // Number of recorded events
 	LtType   = advanced.SlotsToCoeffs //advanced.CoeffsToSlots //
 )
 
@@ -73,7 +63,6 @@ func main() {
 
 	// H: Hamming weight
 	// Depth: matrix decomposition
-	// LogSlots: log of the number of slots
 	for H := 32; H <= 32768; H <<= 1 {
 		for Depth := 4; Depth > 1; Depth-- {
 
@@ -116,26 +105,35 @@ func NewContext(H, depth, logSlots int, ltType advanced.LinearTransformType) (c 
 
 	var err error
 
+	LogQ := make([]int, depth+1)
+
+	LogQ[0] = 60
+	for i := 1; i < depth+1; i++ {
+		LogQ[i] = LogScale
+	}
+
+	LogP := []int{61, 61}
+
 	var params1N ckks.Parameters
 	if params1N, err = ckks.NewParametersFromLiteral(ckks.ParametersLiteral{
-		LogN:         LogN,
-		Q:            Q[:depth+1],
-		P:            P,
-		H:            H,
-		LogSlots:     logSlots,
-		DefaultScale: 1 << 45,
+		LogN:     LogN,
+		LogQ:     LogQ,
+		LogP:     LogP,
+		H:        H,
+		LogSlots: logSlots,
+		LogScale: LogScale,
 	}); err != nil {
 		panic(err)
 	}
 
 	var params2N ckks.Parameters
 	if params2N, err = ckks.NewParametersFromLiteral(ckks.ParametersLiteral{
-		LogN:         LogN + 1,
-		Q:            Q[:depth+1],
-		P:            P,
-		H:            H,
-		LogSlots:     logSlots,
-		DefaultScale: 1 << 45,
+		LogN:     LogN + 1,
+		LogQ:     LogQ,
+		LogP:     LogP,
+		H:        H,
+		LogSlots: logSlots,
+		LogScale: LogScale,
 	}); err != nil {
 		panic(err)
 	}
@@ -144,30 +142,20 @@ func NewContext(H, depth, logSlots int, ltType advanced.LinearTransformType) (c 
 	ecd1N := ckks.NewEncoder(params1N)
 	ecd2N := ckks.NewEncoder(params2N)
 
-	ScalingFactor := make([][]float64, params1N.MaxLevel())
+	Levels := make([]int, params1N.MaxLevel())
 
-	for i := range ScalingFactor {
-		ScalingFactor[i] = []float64{params1N.QiFloat64(i + 1)}
-	}
-
-	var scaling float64
-
-	switch ltType {
-	case advanced.CoeffsToSlots:
-		scaling = 1.0 / float64(2*params1N.Slots())
-	case advanced.SlotsToCoeffs:
-		scaling = 1.0
+	for i := range Levels {
+		Levels[i] = 1
 	}
 
 	encodingMatrixLiteral := advanced.EncodingMatrixLiteral{
+		LinearTransformType: ltType,
 		LogN:                params1N.LogN(),
 		LogSlots:            params1N.LogSlots(),
-		Scaling:             scaling,
-		LinearTransformType: ltType,
-		RepackImag2Real:     true,
 		LevelStart:          params1N.MaxLevel(),
-		BSGSRatio:           4.0,
-		ScalingFactor:       ScalingFactor,
+		Levels:              Levels,
+		RepackImag2Real:     true,
+		LogBSGSRatio:        2,
 	}
 
 	// Gets the rotations indexes for CoeffsToSlots

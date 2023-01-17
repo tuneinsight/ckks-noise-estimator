@@ -1,0 +1,14 @@
+# github.com/tuneinsight/lattigo/v4 v4.1.1-0.20230113081439-21e62876cc83
+## explicit; go 1.14
+github.com/tuneinsight/lattigo/v4/ckks
+github.com/tuneinsight/lattigo/v4/ckks/advanced
+github.com/tuneinsight/lattigo/v4/ring
+github.com/tuneinsight/lattigo/v4/rlwe
+github.com/tuneinsight/lattigo/v4/rlwe/ringqp
+github.com/tuneinsight/lattigo/v4/utils
+# golang.org/x/crypto v0.0.0-20220926161630-eccd6366d1be
+## explicit; go 1.17
+golang.org/x/crypto/blake2b
+# golang.org/x/sys v0.0.0-20220928140112-f11e5e49a4ec
+## explicit; go 1.17
+golang.org/x/sys/cpu

@@ -24,6 +24,8 @@ github.com/tuneinsight/lattigo/v4 v4.1.1-0.20230111105527-50066d32af37 h1:0/2BcJ
 github.com/tuneinsight/lattigo/v4 v4.1.1-0.20230111105527-50066d32af37/go.mod h1:D+AKQojfEtDDhRnqx6hPl1y61YloqnacYPiADOJcDPY=
 github.com/tuneinsight/lattigo/v4 v4.1.1-0.20230113081439-21e62876cc83 h1:21w6FMARdq5Ib4n7xubsK+8L6pIlhUw93QMypK7iN4M=
 github.com/tuneinsight/lattigo/v4 v4.1.1-0.20230113081439-21e62876cc83/go.mod h1:D+AKQojfEtDDhRnqx6hPl1y61YloqnacYPiADOJcDPY=
+github.com/tuneinsight/lattigo/v4 v4.1.1-0.20230118152750-950e429680cd h1:/6IsGExP8xdTRdRMkz8rNnmKZl7+lrgHx+PaQmZ98mY=
+github.com/tuneinsight/lattigo/v4 v4.1.1-0.20230118152750-950e429680cd/go.mod h1:D+AKQojfEtDDhRnqx6hPl1y61YloqnacYPiADOJcDPY=
 golang.org/x/crypto v0.0.0-20220926161630-eccd6366d1be h1:fmw3UbQh+nxngCAHrDCCztao/kbYFnWjoqop8dHx05A=
 golang.org/x/crypto v0.0.0-20220926161630-eccd6366d1be/go.mod h1:IxCIyHEi3zRg3s0A5j5BB6A9Jmi73HwBIUl50j+osU4=
 golang.org/x/net v0.0.0-20211112202133-69e39bad7dc2/go.mod h1:9nx3DQGgdP8bBQD5qxJ1jj9UTztislL4KSBs9R2vV5Y=

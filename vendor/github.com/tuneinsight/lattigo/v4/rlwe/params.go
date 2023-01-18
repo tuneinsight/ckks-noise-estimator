@@ -32,10 +32,10 @@ const DefaultSigma = 3.2
 // The j-th ring automorphism takes the root zeta to zeta^(5j).
 const GaloisGen uint64 = ring.GaloisGen
 
-// ParametersLiteral is a literal representation of BFV parameters.  It has public
-// fields and is used to express unchecked user-defined parameters literally into
-// Go programs. The NewParametersFromLiteral function is used to generate the actual
-// checked parameters from the literal representation.
+// ParametersLiteral is a literal representation of RLWE parameters. It has public fields and
+// is used to express unchecked user-defined parameters literally into Go programs.
+// The NewParametersFromLiteral function is used to generate the actual checked parameters
+// from the literal representation.
 //
 // Users must set the polynomial degree (LogN) and the coefficient modulus, by either setting
 // the Q and P fields to the desired moduli chain, or by setting the LogQ and LogP fields to
@@ -43,8 +43,8 @@ const GaloisGen uint64 = ring.GaloisGen
 //
 // Optionally, users may specify
 // - the base 2 decomposition for the gadget ciphertexts
-// - the error variance (Sigma) and secrets' density (H) and the ring
-// type (RingType). If left unset, standard default values for these field are substituted at
+// - the error variance (Sigma) and secrets' density (H) and the ring type (RingType).
+// If left unset, standard default values for these field are substituted at
 // parameter creation (see NewParametersFromLiteral).
 type ParametersLiteral struct {
 	LogN           int

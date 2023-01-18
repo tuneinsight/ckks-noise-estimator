@@ -30,21 +30,7 @@ func main() {
 	w := csv.NewWriter(f)
 
 	// CSV Header
-	if err := w.Write([]string{
-		"LogN",
-		"H",
-		"Depth",
-		"LogScale",
-		"LogSlots",
-		"MIN",
-		"AVG",
-		"MED",
-		"STD",
-		"MIN",
-		"AVG",
-		"MED",
-		"STD",
-	}); err != nil {
+	if err := w.Write(stats.Header); err != nil {
 		panic(err)
 	}
 
@@ -146,7 +132,8 @@ func (c *Context) ComputeStats() {
 	ciphertext.Value[0].Coeffs = ciphertext.Value[0].Coeffs[:1]
 	ciphertext.Value[1].Coeffs = ciphertext.Value[1].Coeffs[:1]
 
-	// Compares
+	ciphertext.Scale = rlwe.NewScale(1)
+
 	c.stats.Update(values, ecd.DecodeCoeffs(dec.DecryptNew(ciphertext)))
 }
 

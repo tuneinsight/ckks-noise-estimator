@@ -6,6 +6,20 @@ import (
 	"sort"
 )
 
+var Header = []string{
+	"LogN",
+	"H",
+	"Depth",
+	"LogScale",
+	"LogSlots",
+	"MIN",
+	"AVG",
+	"STD",
+	"MIN",
+	"AVG",
+	"STD",
+}
+
 // PrecisionStats is a struct storing statistic about the precision of a CKKS plaintext
 type PrecisionStats struct {
 	LogN, H, Depth, LogScale, LogSlots int
@@ -85,14 +99,18 @@ func (p *PrecisionStats) Update(want, have interface{}) {
 
 	for i := range valuesWant {
 
-		deltaReal = math.Abs(real(valuesTest[i]) - real(valuesWant[i]))
-		deltaImag = math.Abs(imag(valuesTest[i]) - imag(valuesWant[i]))
+		deltaReal = real(valuesTest[i]) - real(valuesWant[i])
+		deltaImag = imag(valuesTest[i]) - imag(valuesWant[i])
 		deltaL2 = math.Sqrt(deltaReal*deltaReal + deltaImag*deltaImag)
 
-		p.precReal = append(p.precReal, math.Log2(1/deltaReal))
-		p.precImag = append(p.precImag, math.Log2(1/deltaImag))
-		p.precL2 = append(p.precL2, math.Log2(1/deltaL2))
 		p.diff = append(p.diff, Stats{Real: deltaReal, Imag: deltaImag, L2: deltaL2})
+
+		deltaReal = math.Abs(deltaReal)
+		deltaImag = math.Abs(deltaImag)
+
+		p.precReal = append(p.precReal, deltaReal)
+		p.precImag = append(p.precImag, deltaImag)
+		p.precL2 = append(p.precL2, deltaL2)
 
 		p.MeanDelta.Real += deltaReal
 		p.MeanDelta.Imag += deltaImag
@@ -118,13 +136,13 @@ func (p *PrecisionStats) Finalize() {
 	p.MeanDelta.Imag /= float64(len(p.diff))
 	p.MeanDelta.L2 /= float64(len(p.diff))
 
-	p.MedianDelta = calcmedian(p.diff)
+	//p.MedianDelta = calcmedian(p.diff)
 
-	p.StdPrecision = calcstandarddeviation(p.diff, p.MeanDelta)
+	p.StdPrecision = p.calcstandarddeviation(p.diff)
 
 	p.MinPrecision = deltaToPrecision(p.MaxDelta)
 	p.MeanPrecision = deltaToPrecision(p.MeanDelta)
-	p.MedianPrecision = deltaToPrecision(p.MedianDelta)
+	//p.MedianPrecision = deltaToPrecision(p.MedianDelta)
 
 	/*
 		p.cdfResol = 500
@@ -158,42 +176,54 @@ func (prec *PrecisionStats) ToCSV() []string {
 		fmt.Sprintf("%d", prec.LogSlots),
 		fmt.Sprintf("%.4f", prec.MinPrecision.Real),
 		fmt.Sprintf("%.4f", prec.MeanPrecision.Real),
-		fmt.Sprintf("%.4f", prec.MedianPrecision.Real),
+		//fmt.Sprintf("%.4f", prec.MedianPrecision.Real),
 		fmt.Sprintf("%.4f", prec.StdPrecision.Real),
 		fmt.Sprintf("%.4f", prec.MinPrecision.Imag),
 		fmt.Sprintf("%.4f", prec.MeanPrecision.Imag),
-		fmt.Sprintf("%.4f", prec.MedianPrecision.Imag),
+		//fmt.Sprintf("%.4f", prec.MedianPrecision.Imag),
 		fmt.Sprintf("%.4f", prec.StdPrecision.Imag),
 	}
 }
 
-func calcstandarddeviation(diff []Stats, mean Stats) (std Stats) {
+func (p *PrecisionStats) calcstandarddeviation(diff []Stats) (std Stats) {
 	std = Stats{}
 
-	mReal := math.Log2(1 / mean.Real)
-	mImag := math.Log2(1 / mean.Imag)
-	mL2 := math.Log2(1 / mean.L2)
-
-	var real, imag, l2 float64
-
-	var v float64
+	var mReal, mImag, mL2 float64
 	for _, d := range diff {
 
-		v = math.Log2(1/maxFloat64(d.Real, 1e-16)) - mReal
-		real += v * v
-
-		v = math.Log2(1/maxFloat64(d.Imag, 1e-16)) - mImag
-		imag += v * v
-
-		v = math.Log2(1/maxFloat64(d.L2, 1e-16)) - mL2
-		l2 += v * v
+		mReal += d.Real
+		mImag += d.Imag
+		mL2 += d.L2
 	}
 
 	n := float64(len(diff))
 
-	std.Real = math.Sqrt(real / n)
-	std.Imag = math.Sqrt(imag / n)
-	std.L2 = math.Sqrt(l2 / n)
+	mReal /= n
+	mImag /= n
+	mL2 /= n
+
+	var real, imag, l2 float64
+
+	scale := float64(int(1 << p.LogScale))
+
+	var v float64
+	for _, d := range diff {
+
+		v = (d.Real - mReal) * scale
+		real += v * v
+
+		v = (d.Imag - mImag) * scale
+		imag += v * v
+
+		v = (d.L2 - mL2) * scale
+		l2 += v * v
+	}
+
+	std.Real = math.Sqrt(real / (n - 1))
+	std.Imag = math.Sqrt(imag / (n - 1))
+	std.L2 = math.Sqrt(l2 / (n - 1))
+
+	fmt.Printf("STD Real: %7.4f Imag: %7.4f L2 %7.4f\n", std.Real, std.Imag, std.L2)
 
 	return
 }

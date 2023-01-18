@@ -75,6 +75,7 @@ type Evaluator interface {
 	// === original ckks.Evaluator redefined methods ===
 	// =================================================
 
+	Parameters() ckks.Parameters
 	GetRLWEEvaluator() *rlwe.Evaluator
 	BuffQ() [3]*ring.Poly
 	BuffCt() *rlwe.Ciphertext
@@ -97,6 +98,11 @@ func NewEvaluator(params ckks.Parameters, evaluationKey rlwe.EvaluationKey) Eval
 // Evaluators can be used concurrently.
 func (eval *evaluator) ShallowCopy() Evaluator {
 	return &evaluator{eval.Evaluator.ShallowCopy(), eval.params}
+}
+
+// Parameters returns the ckks.Parameters of the target Evaluator.
+func (eval *evaluator) Parameters() ckks.Parameters {
+	return eval.params
 }
 
 // WithKey creates a shallow copy of the receiver Evaluator for which the new EvaluationKey is evaluationKey
@@ -130,7 +136,7 @@ func (eval *evaluator) CoeffsToSlots(ctIn *rlwe.Ciphertext, ctsMatrices Encoding
 
 		zV := ctIn.CopyNew()
 
-		eval.dft(ctIn, ctsMatrices.matrices, zV)
+		eval.dft(ctIn, ctsMatrices.Matrices, zV)
 
 		eval.Conjugate(zV, ctReal)
 
@@ -157,7 +163,7 @@ func (eval *evaluator) CoeffsToSlots(ctIn *rlwe.Ciphertext, ctsMatrices Encoding
 
 		zV = nil
 	} else {
-		eval.dft(ctIn, ctsMatrices.matrices, ctReal)
+		eval.dft(ctIn, ctsMatrices.Matrices, ctReal)
 	}
 }
 
@@ -186,9 +192,9 @@ func (eval *evaluator) SlotsToCoeffs(ctReal, ctImag *rlwe.Ciphertext, stcMatrice
 	if ctImag != nil {
 		eval.MultByConst(ctImag, complex(0, 1), ctOut)
 		eval.Add(ctOut, ctReal, ctOut)
-		eval.dft(ctOut, stcMatrices.matrices, ctOut)
+		eval.dft(ctOut, stcMatrices.Matrices, ctOut)
 	} else {
-		eval.dft(ctReal, stcMatrices.matrices, ctOut)
+		eval.dft(ctReal, stcMatrices.Matrices, ctOut)
 	}
 }
 

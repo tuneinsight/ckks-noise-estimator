@@ -253,7 +253,7 @@ var (
 	}
 )
 
-// ParametersLiteral is a literal representation of BFV parameters.  It has public
+// ParametersLiteral is a literal representation of CKKS parameters.  It has public
 // fields and is used to express unchecked user-defined parameters literally into
 // Go programs. The NewParametersFromLiteral function is used to generate the actual
 // checked parameters from the literal representation.

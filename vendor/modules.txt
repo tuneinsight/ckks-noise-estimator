@@ -1,4 +1,4 @@
-# github.com/tuneinsight/lattigo/v4 v4.1.1-0.20230113081439-21e62876cc83
+# github.com/tuneinsight/lattigo/v4 v4.1.1-0.20230118152750-950e429680cd
 ## explicit; go 1.14
 github.com/tuneinsight/lattigo/v4/ckks
 github.com/tuneinsight/lattigo/v4/ckks/advanced

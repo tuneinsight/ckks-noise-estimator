@@ -7,8 +7,7 @@ import (
 	"os"
 	"time"
 
-	"stats"
-
+	"github.com/tuneinsight/ckks-bootstrapping-precision/stats"
 	"github.com/tuneinsight/lattigo/v4/ckks"
 	"github.com/tuneinsight/lattigo/v4/ckks/advanced"
 	"github.com/tuneinsight/lattigo/v4/rlwe"
@@ -163,6 +162,62 @@ func NewContext(H, depth, logSlots int, ltType advanced.LinearTransformType) (c 
 		encodingMatrix: encodingMatrix,
 		stats:          stats.NewPrecisionStats(LogN, H, params1N.MaxLevel(), params1N.LogSlots(), int(math.Round(math.Log2(params1N.DefaultScale().Float64())))),
 	}
+}
+
+func GetEncodingMatricesSTD(params ckks.Parameters, ecd ckks.Encoder, encodingMatrix advanced.EncodingMatrix){
+
+	ringQ := params.RingQ().AtLevel(1)
+	tmp := ringQ.NewPoly()
+
+	variances := [][]float64{}
+
+	for _, matrix := range encodingMatrix.Matrices{
+
+		s := []float64{}
+
+		for _, vec := range matrix.Vec{
+			ringQ.INTT(vec.Q, tmp)
+			ringQ.IMForm(tmp, tmp)
+
+			values := ecd.DecodeCoeffs(&rlwe.Plaintext{Value:tmp, MetaData:rlwe.MetaData{Scale:rlwe.NewScale(1)}})
+
+			s = append(s, STD(values))
+		}
+
+		variances = append(variances, s)
+	}
+
+	fmt.Printf("[\n")
+	for i := range variances{
+		fmt.Printf("[")
+		for j := range variances[i]{
+			fmt.Printf("%f, ", variances[i][j])
+		}
+		fmt.Printf("],\n")
+	}
+	fmt.Println()
+}
+
+func STD(slice []float64)(std float64){
+
+	n := float64(len(slice))
+
+	var mean float64
+	for _, c := range slice{
+		mean += c
+	}
+
+	mean /= n
+
+	var tmp float64
+	for _, c := range slice{
+		tmp = (c - mean)
+		std += tmp * tmp
+	}
+
+	std /= (n-1)
+
+	return math.Sqrt(std)
 }
 
 // GenKeys generates a new set of keys.

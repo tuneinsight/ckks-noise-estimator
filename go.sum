@@ -18,12 +18,6 @@ github.com/stretchr/objx v0.4.0/go.mod h1:YvHI0jy2hoMjB+UWwv71VJQ9isScKT/TqJzVSS
 github.com/stretchr/testify v1.7.1/go.mod h1:6Fq8oRcR53rry900zMqJjRRixrwX3KX962/h/Wwjteg=
 github.com/stretchr/testify v1.8.0 h1:pSgiaMZlXftHpm5L7V1+rVB+AZJydKsMxsQBIJw4PKk=
 github.com/stretchr/testify v1.8.0/go.mod h1:yNjHg4UonilssWZ8iaSj1OCr/vHnekPRkoO+kdMU+MU=
-github.com/tuneinsight/lattigo/v4 v4.1.0 h1:+/9oVztV6V96e9VJuuqMGvurTbDl9kAJLdv3qfsEXus=
-github.com/tuneinsight/lattigo/v4 v4.1.0/go.mod h1:x5Ce4CIKLR8MNMAKMXVAtIUbjCC1S+jW1IgVau3TRu4=
-github.com/tuneinsight/lattigo/v4 v4.1.1-0.20230111105527-50066d32af37 h1:0/2BcJxkf8OvR7n+8jtw4tmaY+KYo+JFEUP2W7mu8gg=
-github.com/tuneinsight/lattigo/v4 v4.1.1-0.20230111105527-50066d32af37/go.mod h1:D+AKQojfEtDDhRnqx6hPl1y61YloqnacYPiADOJcDPY=
-github.com/tuneinsight/lattigo/v4 v4.1.1-0.20230113081439-21e62876cc83 h1:21w6FMARdq5Ib4n7xubsK+8L6pIlhUw93QMypK7iN4M=
-github.com/tuneinsight/lattigo/v4 v4.1.1-0.20230113081439-21e62876cc83/go.mod h1:D+AKQojfEtDDhRnqx6hPl1y61YloqnacYPiADOJcDPY=
 github.com/tuneinsight/lattigo/v4 v4.1.1-0.20230118152750-950e429680cd h1:/6IsGExP8xdTRdRMkz8rNnmKZl7+lrgHx+PaQmZ98mY=
 github.com/tuneinsight/lattigo/v4 v4.1.1-0.20230118152750-950e429680cd/go.mod h1:D+AKQojfEtDDhRnqx6hPl1y61YloqnacYPiADOJcDPY=
 golang.org/x/crypto v0.0.0-20220926161630-eccd6366d1be h1:fmw3UbQh+nxngCAHrDCCztao/kbYFnWjoqop8dHx05A=

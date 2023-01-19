@@ -7,7 +7,7 @@ import (
 	"os"
 	"time"
 
-	"stats"
+	"github.com/tuneinsight/ckks-bootstrapping-precision/stats"
 
 	"github.com/tuneinsight/lattigo/v4/ckks"
 	"github.com/tuneinsight/lattigo/v4/rlwe"

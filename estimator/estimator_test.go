@@ -180,18 +180,14 @@ func TestEstimator(t *testing.T) {
 	})
 
 	t.Run("Mul/Ct/Pt", func(t *testing.T) {
+
+		// EMPIRICALLY VERIFIED
+
 		var msg float64 = 1 << 45
 		var err float64 = 3.2
 
-		pt0 := Element{
-			Message: NewFloat(msg),
-			Noise:   []*big.Float{NewFloat(err)},
-		}
-
-		ct1 := Element{
-			Message: NewFloat(msg),
-			Noise:   []*big.Float{NewFloat(err), NewFloat(err)},
-		}
+		pt0 := NewPlaintext(err*msg, nil, 4)
+		ct1 := NewCiphertextPk(NewPlaintext(err*msg, nil, 4))
 
 		ct2 := est.Mul(pt0, ct1)
 
@@ -214,10 +210,16 @@ func TestEstimator(t *testing.T) {
 		want, _ = tmp.Float64()
 		want = math.Log2(want)
 
+		t.Log(have)
+		t.Log(want)
+
 		require.InDelta(t, want, have, delta)
 	})
 
 	t.Run("Mul/Ct/Ct", func(t *testing.T) {
+
+		// EMPIRICALLY VERIFIED
+
 		var msg float64 = 1 << 45
 		var err float64 = 3.2
 
@@ -271,6 +273,8 @@ func TestEstimator(t *testing.T) {
 	})
 
 	t.Run("Rescale", func(t *testing.T) {
+
+		// EMPIRICALLY VERIFIED
 
 		level := 1
 

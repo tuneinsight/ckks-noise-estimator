@@ -42,6 +42,7 @@ func (e *Estimator) Std(el0 Element) (stdf64 float64) {
 	std := new(big.Float).Mul(el0.Noise[0], el0.Noise[0])
 
 	sk := new(big.Float).Set(e.H)
+	sk.Quo(sk, NewFloat(2)) // better ring expansion bound
 
 	var tmp = new(big.Float)
 
@@ -122,7 +123,7 @@ func (e *Estimator) Mul(el0, el1 Element) (el2 Element) {
 
 		for j := 0; j < el1.Degree()+1; j++ {
 
-			e1.Set(el1.Noise[i])
+			e1.Set(el1.Noise[j])
 
 			if j == 0 {
 				e1 = AddSTD(e1, el1.Message)

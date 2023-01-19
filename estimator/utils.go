@@ -27,6 +27,10 @@ func NewFloat(x interface{}) (s *big.Float) {
 		s = new(big.Float).SetPrec(prec)
 		s.SetInt(x)
 		return
+	case *big.Float:
+		s = new(big.Float).SetPrec(prec)
+		s.Set(x)
+		return
 	case int:
 		return NewFloat(new(big.Int).SetInt64(int64(x)))
 	case int64:
@@ -56,7 +60,9 @@ func SubSTD(a, b *big.Float) (c *big.Float) {
 
 func MulSTD(N, a, b *big.Float) (c *big.Float) {
 	c = new(big.Float).Mul(a, b)
-	c.Mul(c, new(big.Float).Sqrt(N))
+	tmp := new(big.Float).Quo(N, NewFloat(2))
+	tmp.Sqrt(tmp)
+	c.Mul(c, tmp)
 	return
 }
 

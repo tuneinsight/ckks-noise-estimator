@@ -14,29 +14,15 @@ var Header = []string{
 
 // PrecisionStats is a struct storing statistic about the precision of a CKKS plaintext
 type PrecisionStats struct {
-	LogN, H, Depth, LogScale, LogSlots int
+	H int
 	MaxDelta                           float64
 	MinPrecision                       float64
 	MeanDelta                          float64
 	MeanPrecision                      float64
-	MedianDelta                        float64
-	MedianPrecision                    float64
 	StdPrecision                       float64
 
-	/*
-		If we want to produce CDF graphs, we can with this
-		RealDist, ImagDist, L2Dist []struct {
-			Prec  float64
-			Count int
-		}
-
-		cdfResol int
-	*/
-
 	diff     []float64
-	precReal []float64
-	precImag []float64
-	precL2   []float64
+	prec []float64
 }
 
 func NewPrecisionStats(H int) (prec *PrecisionStats) {
@@ -46,9 +32,7 @@ func NewPrecisionStats(H int) (prec *PrecisionStats) {
 		MeanDelta: 0,
 
 		diff:     []float64{},
-		precReal: []float64{},
-		precImag: []float64{},
-		precL2:   []float64{},
+		prec: []float64{},
 	}
 }
 
@@ -62,7 +46,7 @@ func (p *PrecisionStats) Update(values []float64) {
 
 		abs = math.Abs(v)
 
-		p.precReal = append(p.precReal, abs)
+		p.prec = append(p.prec, abs)
 
 		p.MeanDelta += abs
 

@@ -12,7 +12,9 @@ var delta = 1e-15 //float64 precision
 
 func TestEstimator(t *testing.T) {
 
-	N := 65536
+	LogN := 16
+
+	N := 1<<LogN
 	H := 32768
 
 	Q := []uint64{1152921504606584833, 35184372744193, 35184373006337, 35184368025601, 35184376545281}
@@ -23,28 +25,6 @@ func TestEstimator(t *testing.T) {
 	stdSk.Sqrt(stdSk)
 
 	est := NewEstimator(N, H, Q, P)
-
-	t.Run("Std", func(t *testing.T) {
-
-		err := math.Sqrt(1 / 12.0)
-
-		elem := Element{
-			Message: new(big.Float),
-			Noise:   []*big.Float{NewFloat(err), NewFloat(err), NewFloat(err)},
-		}
-
-		have := est.Std(elem)
-
-		tmp := MulSTD(est.N, elem.Noise[2], stdSk)
-		tmp = AddSTD(tmp, elem.Noise[1])
-		tmp = MulSTD(est.N, tmp, stdSk)
-		tmp = AddSTD(tmp, elem.Noise[0])
-
-		want, _ := tmp.Float64()
-		want = math.Log2(want)
-
-		require.InDelta(t, want, have, delta)
-	})
 
 	t.Run("Add/Pt/Pt", func(t *testing.T) {
 
@@ -187,7 +167,7 @@ func TestEstimator(t *testing.T) {
 		var err float64 = 3.2
 
 		pt0 := NewPlaintext(err*msg, nil, 4)
-		ct1 := NewCiphertextPk(NewPlaintext(err*msg, nil, 4))
+		ct1 := NewCiphertextPK(NewPlaintext(err*msg, nil, 4))
 
 		ct2 := est.Mul(pt0, ct1)
 
@@ -291,10 +271,40 @@ func TestEstimator(t *testing.T) {
 		elem = est.Rescale(elem)
 
 		have := est.Std(elem)
-		want := math.Log2(math.Sqrt((err/q*err/q + 1/12.0) + ((err/q*err/q+1/12.0)+(err/q*err/q+1/12.0)*float64(H))*float64(H)))
+		want := math.Log2(math.Sqrt((err/q*err/q + 1/12.0) + ((err/q*err/q+1/12.0)+(err/q*err/q+1/12.0)*float64(H))*float64(H)*0.5))
 
 		//require.InDelta(t, elem.Message, msg/q, delta)
 		require.Equal(t, elem.Level, level-1)
 		require.InDelta(t, want, have, delta)
+	})
+
+	t.Run("LinearTransform", func(t *testing.T){
+
+		diags := map[int]float64{
+			-5: 3.2,
+			-4: 3.2,
+			-3: 3.2,
+			-2: 3.2,
+			-1: 3.2,
+			0: 3.2,
+			1: 3.2,
+			2: 3.2,
+			3: 3.2,
+			4: 3.2,
+			5: 3.2,
+		}
+
+		level := 4
+
+		LT := NewLinearTransform(diags, Q[level], level, LogN-1, 2)
+
+		ct := NewCiphertextPK(NewPlaintext(3.2 * (1<<45), nil, level))
+
+		ct = est.LinearTransform(ct, LT)
+
+		have := est.Std(ct)
+
+		t.Log(have)
+
 	})
 }

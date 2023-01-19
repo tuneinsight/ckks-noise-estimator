@@ -160,7 +160,7 @@ func NewContext(H, depth, logSlots int, ltType advanced.LinearTransformType) (c 
 		eval:           eval,
 		rotations:      rotations,
 		encodingMatrix: encodingMatrix,
-		stats:          stats.NewPrecisionStats(LogN, H, params1N.MaxLevel(), params1N.LogSlots(), int(math.Round(math.Log2(params1N.DefaultScale().Float64())))),
+		stats:          stats.NewPrecisionStats(H),
 	}
 }
 
@@ -280,20 +280,21 @@ func (c *Context) ComputeStats() {
 		// Applies the homomorphic DFT
 		ct0, ct1 := CoeffsToSlotsNew(eval, ciphertext, c.encodingMatrix)
 
-		var want, have interface{}
+		var diff []float64
 
 		// Checks against the original coefficients
 
 		// Sparse packing
 		if params.LogSlots() < params.LogN()-1 {
 
-			coeffsReal := ecd.DecodeCoeffs(dec.DecryptNew(ct0)) // Decodes in the ring
+			slots := params.Slots()
+			twoslots := slots<<1
 
 			// Plaintext circuit
-			vec := make([]complex128, 2*params.Slots())
+			vec := make([]complex128, twoslots)
 
 			// Embed real vector into the complex vector (trivial)
-			for i, j := 0, params.Slots(); i < params.Slots(); i, j = i+1, j+1 {
+			for i, j := 0, slots; i < slots; i, j = i+1, j+1 {
 				vec[i] = complex(valuesReal[i], 0)
 				vec[j] = complex(valuesImag[i], 0)
 			}
@@ -305,20 +306,19 @@ func (c *Context) ComputeStats() {
 			ecd.IFFT(vec, params.LogSlots()+1)
 
 			// Extract complex vector into real vector
-			vecReal := make([]float64, params.N())
-			for i, idx, jdx := 0, 0, params.N()>>1; i < 2*params.Slots(); i, idx, jdx = i+1, idx+gap/2, jdx+gap/2 {
-				vecReal[idx] = real(vec[i])
-				vecReal[jdx] = imag(vec[i])
+			vecFloat := make([]float64, params.N())
+			for i, idx, jdx := 0, 0, params.N()>>1; i < twoslots; i, idx, jdx = i+1, idx+gap/2, jdx+gap/2 {
+				vecFloat[idx] = real(vec[i])
+				vecFloat[jdx] = imag(vec[i])
 			}
 
-			want = coeffsReal
-			have = vecReal
+			eval.Sub(ct0, ecd.EncodeCoeffsNew(vecFloat, ct0.Level(), ct0.Scale), ct0)
+
+			ct0.Scale = rlwe.NewScale(1)
+
+			diff = ecd.DecodeCoeffs(dec.DecryptNew(ct0)) // Decodes in the ring
 
 		} else {
-
-			// Full packing = 2 ciphertext, one for the real and one for the imaginary part
-			coeffsReal := ecd.DecodeCoeffs(dec.DecryptNew(ct0))
-			coeffsImag := ecd.DecodeCoeffs(dec.DecryptNew(ct1))
 
 			// Embed the reverence vectors into the complex vector (trivial)
 			vec0 := make([]complex128, params.Slots())
@@ -340,33 +340,33 @@ func (c *Context) ComputeStats() {
 				vecImag[i], vecImag[j] = real(vec1[i]), imag(vec1[i])
 			}
 
-			tmp0 := make([]complex128, params.N())
-			tmp1 := make([]complex128, params.N())
+			eval.Sub(ct0, ecd.EncodeCoeffsNew(vecReal, ct0.Level(), ct0.Scale), ct0)
+			eval.Sub(ct1, ecd.EncodeCoeffsNew(vecImag, ct1.Level(), ct1.Scale), ct1)
 
-			for i := 0; i < params.N(); i++ {
-				tmp0[i] = complex(coeffsReal[i], coeffsImag[i])
-				tmp1[i] = complex(vecReal[i], vecImag[i])
-			}
+			ct0.Scale = rlwe.NewScale(1)
+			ct1.Scale = rlwe.NewScale(1)
 
-			have = tmp0
-			want = tmp1
+			// Full packing = 2 ciphertext, one for the real and one for the imaginary part
+			diff = append(ecd.DecodeCoeffs(dec.DecryptNew(ct0)), ecd.DecodeCoeffs(dec.DecryptNew(ct1))...)
 		}
 
 		// Compares
-		c.stats.Update(have, want)
+		c.stats.Update(diff)
 
 	case advanced.SlotsToCoeffs:
+
+		slots := params.Slots()
 
 		// Generates the n first slots of the test vector (real part to encode)
 		valuesReal := make([]complex128, params.Slots())
 		for i := range valuesReal {
-			valuesReal[i] = complex(float64(i+1)/float64(params.Slots()), 0)
+			valuesReal[i] = complex(utils.RandFloat64(-1, 1), 0)
 		}
 
 		// Generates the n first slots of the test vector (imaginary part to encode)
 		valuesImag := make([]complex128, params.Slots())
 		for i := range valuesImag {
-			valuesImag[i] = complex(float64(i+1)/float64(params.Slots()), 0)
+			valuesImag[i] = complex(utils.RandFloat64(-1, 1), 0)
 		}
 
 		// If sparse, there there is the space to store both vectors in one
@@ -396,28 +396,34 @@ func (c *Context) ComputeStats() {
 		res := SlotsToCoeffsNew(eval, ct0, ct1, c.encodingMatrix)
 
 		// Decrypt and decode in the ring
-		coeffsFloat := ecd.DecodeCoeffs(dec.DecryptNew(res))
-
-		// Extracts the coefficients and construct the complex vector
-		// This is simply coefficient ordering
-		valuesTest := make([]complex128, params.Slots())
-		gap := params.N() / (2 * params.Slots())
-		for i, idx := 0, 0; i < params.Slots(); i, idx = i+1, idx+gap {
-			valuesTest[i] = complex(coeffsFloat[idx], coeffsFloat[idx+(params.N()>>1)])
-		}
+		
 
 		// The result is always returned as a single complex vector, so if full-packing (2 initial vectors)
 		// then repacks both vectors together
+		
 		if params.LogSlots() == params.LogN()-1 {
 			for i := range valuesReal {
 				valuesReal[i] += complex(0, real(valuesImag[i]))
 			}
+			ckks.SliceBitReverseInPlaceComplex128(valuesReal, slots)
+		}else{
+			ckks.SliceBitReverseInPlaceComplex128(valuesReal, slots)
+			ckks.SliceBitReverseInPlaceComplex128(valuesImag, slots)
 		}
 
-		// Result is bit-reversed, so applies the bit-reverse permutation on the reference vector
-		ckks.SliceBitReverseInPlaceComplex128(valuesReal, params.Slots())
+		valuesFloat := make([]float64, params.N())
+		gap := params.N() / (2*slots)
+		for i, idx, jdx := 0, 0, params.N()>>1; i < slots; i, idx, jdx = i+1, idx+gap, jdx+gap {
+			valuesFloat[idx] = real(valuesReal[i])
+			valuesFloat[jdx] = imag(valuesReal[i])
+		}
 
-		c.stats.Update(valuesReal, valuesTest)
+		eval.Sub(res, ecd.EncodeCoeffsNew(valuesFloat, res.Level(), res.Scale), res)
+		res.Scale = rlwe.NewScale(1)
+
+		diff := ecd.DecodeCoeffs(dec.DecryptNew(res))
+
+		c.stats.Update(diff)
 
 	default:
 		panic("how did you get there?")

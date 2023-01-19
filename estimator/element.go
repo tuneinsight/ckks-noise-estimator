@@ -42,7 +42,7 @@ func NewPlaintext(msg, noise interface{}, level int) Element {
 	}
 }
 
-func NewCiphertextSk(pt Element) Element {
+func NewCiphertextSK(pt Element) Element {
 	return Element{
 		Level:pt.Level,
 		Message: NewFloat(pt.Message),
@@ -50,7 +50,7 @@ func NewCiphertextSk(pt Element) Element {
 	}
 }
 
-func NewCiphertextPk(pt Element) Element {
+func NewCiphertextPK(pt Element) Element {
 
 	oneTwelve := NewFloat(4)
 	oneTwelve.Quo(oneTwelve, NewFloat(12))

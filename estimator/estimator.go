@@ -96,54 +96,86 @@ func (e *Estimator) Add(el0, el1 Element) (el2 Element) {
 	return
 }
 
-func (e *Estimator) Mul(el0, el1 Element) (el2 Element) {
+func (e *Estimator) Mul(el0 Element, el1 interface{}) (el2 Element) {
 
 	el2 = Element{}
 
-	el2.Level = MinInt(el0.Level, el1.Level)
+	switch el1 := el1.(type) {
+	case Element:
 
-	el2.Message = MulSTD(e.N, el0.Message, el1.Message)
+		el2.Level = MinInt(el0.Level, el1.Level)
 
-	el2.Noise = make([]*big.Float, el0.Degree()+el1.Degree()+1)
+		el2.Message = MulSTD(e.N, el0.Message, el1.Message)
 
-	for i := range el2.Noise {
-		el2.Noise[i] = new(big.Float)
-	}
+		el2.Noise = make([]*big.Float, el0.Degree()+el1.Degree()+1)
 
-	e0 := new(big.Float)
-	e1 := new(big.Float)
-
-	for i := 0; i < el0.Degree()+1; i++ {
-
-		e0.Set(el0.Noise[i])
-
-		if i == 0 {
-			e0 = AddSTD(e0, el0.Message)
+		for i := range el2.Noise {
+			el2.Noise[i] = new(big.Float)
 		}
 
-		for j := 0; j < el1.Degree()+1; j++ {
+		e0 := new(big.Float)
+		e1 := new(big.Float)
 
-			e1.Set(el1.Noise[j])
+		for i := 0; i < el0.Degree()+1; i++ {
 
-			if j == 0 {
-				e1 = AddSTD(e1, el1.Message)
+			e0.Set(el0.Noise[i])
+
+			if i == 0 {
+				e0 = AddSTD(e0, el0.Message)
 			}
 
-			el2.Noise[i+j] = AddSTD(el2.Noise[i+j], MulSTD(e.N, e0, e1))
+			for j := 0; j < el1.Degree()+1; j++ {
+
+				e1.Set(el1.Noise[j])
+
+				if j == 0 {
+					e1 = AddSTD(e1, el1.Message)
+				}
+
+				el2.Noise[i+j] = AddSTD(el2.Noise[i+j], MulSTD(e.N, e0, e1))
+			}
+		}
+
+		el2.Noise[0] = SubSTD(el2.Noise[0], el2.Message)
+
+	default:
+		scale := NewFloat(el1)
+
+		el2.Level = el0.Level
+		el2.Message = new(big.Float).Mul(el0.Message, scale)
+
+		el2.Noise = make([]*big.Float, el0.Degree()+1)
+
+		for i := 0; i < el0.Degree()+1; i++{
+			el2.Noise[i] = new(big.Float).Mul(el0.Noise[i], scale)
 		}
 	}
 
-	el2.Noise[0] = SubSTD(el2.Noise[0], el2.Message)
-
 	return
+}
+
+// KeySwitchLazy returns P * el0 + ks(el0)
+func (e *Estimator) KeySwitchLazy(el0 Element) (el1 Element){
+
+	el1 = e.Mul(el0, e.P)
+
+	tmp := Element{
+		Level: el0.Level,
+		Message: NewFloat(0),
+		Noise: []*big.Float{
+			e.KeySwitchRawLazy(el0.Level, el0.Noise[1], NoiseFresh, e.H),
+			NewFloat(0),
+		},
+	}
+
+	return e.Add(el1, tmp)
 }
 
 func (e *Estimator) Relinearize(el0 Element) (el1 Element) {
 
 	el1 = Element{}
-
+	el1.Level = el0.Level
 	el1.Message = new(big.Float).Set(el0.Message)
-
 	el1.Noise = []*big.Float{
 		new(big.Float).Set(el0.Noise[0]),
 		new(big.Float).Set(el0.Noise[1]),
@@ -152,6 +184,7 @@ func (e *Estimator) Relinearize(el0 Element) (el1 Element) {
 	for i := 2; i < el0.Degree()+1; i++ {
 
 		tmp := e.ModDown(Element{
+			Level: el0.Level,
 			Message: NewFloat(0),
 			Noise: []*big.Float{
 				e.KeySwitchRawLazy(el0.Level, el0.Noise[i], NoiseFresh, e.H),
@@ -164,6 +197,8 @@ func (e *Estimator) Relinearize(el0 Element) (el1 Element) {
 
 	return
 }
+
+
 
 // KeySwitchRawLazy: raw output of the key-switching dot-product
 // without the division by P. Thus only the error is due to multiplication

@@ -3,18 +3,10 @@ package stats
 import (
 	"fmt"
 	"math"
-	"sort"
 )
 
 var Header = []string{
-	"LogN",
 	"H",
-	"Depth",
-	"LogScale",
-	"LogSlots",
-	"MIN",
-	"AVG",
-	"STD",
 	"MIN",
 	"AVG",
 	"STD",
@@ -23,13 +15,13 @@ var Header = []string{
 // PrecisionStats is a struct storing statistic about the precision of a CKKS plaintext
 type PrecisionStats struct {
 	LogN, H, Depth, LogScale, LogSlots int
-	MaxDelta                           Stats
-	MinPrecision                       Stats
-	MeanDelta                          Stats
-	MeanPrecision                      Stats
-	MedianDelta                        Stats
-	MedianPrecision                    Stats
-	StdPrecision                       Stats
+	MaxDelta                           float64
+	MinPrecision                       float64
+	MeanDelta                          float64
+	MeanPrecision                      float64
+	MedianDelta                        float64
+	MedianPrecision                    float64
+	StdPrecision                       float64
 
 	/*
 		If we want to produce CDF graphs, we can with this
@@ -41,195 +33,89 @@ type PrecisionStats struct {
 		cdfResol int
 	*/
 
-	diff     []Stats
+	diff     []float64
 	precReal []float64
 	precImag []float64
 	precL2   []float64
 }
 
-// Stats is a struct storing the real, imaginary and L2 norm (modulus)
-// about the precision of a complex value.
-type Stats struct {
-	Real, Imag, L2 float64
-}
-
-func NewPrecisionStats(LogN, H, Depth, LogSlots, LogScale int) (prec *PrecisionStats) {
+func NewPrecisionStats(H int) (prec *PrecisionStats) {
 	return &PrecisionStats{
-		LogN:      LogN,
 		H:         H,
-		Depth:     Depth,
-		LogScale:  LogScale,
-		LogSlots:  LogSlots,
-		MaxDelta:  Stats{0, 0, 0},
-		MeanDelta: Stats{0, 0, 0},
+		MaxDelta:  0,
+		MeanDelta: 0,
 
-		diff:     []Stats{},
+		diff:     []float64{},
 		precReal: []float64{},
 		precImag: []float64{},
 		precL2:   []float64{},
 	}
 }
 
-func (p *PrecisionStats) Update(want, have interface{}) {
+func (p *PrecisionStats) Update(values []float64) {
 
-	var valuesTest []complex128
+	var abs float64
 
-	switch have := have.(type) {
-	case []complex128:
-		valuesTest = have
-	case []float64:
-		valuesTest = make([]complex128, len(have))
-		for i := range have {
-			valuesTest[i] = complex(have[i], 0)
-		}
-	}
+	for _, v := range values {
 
-	var valuesWant []complex128
-	switch want := want.(type) {
-	case []complex128:
-		valuesWant = want
-	case []float64:
-		valuesWant = make([]complex128, len(want))
-		for i := range want {
-			valuesWant[i] = complex(want[i], 0)
-		}
-	}
+		p.diff = append(p.diff, v)
 
-	var deltaReal, deltaImag, deltaL2 float64
+		abs = math.Abs(v)
 
-	for i := range valuesWant {
+		p.precReal = append(p.precReal, abs)
 
-		deltaReal = real(valuesTest[i]) - real(valuesWant[i])
-		deltaImag = imag(valuesTest[i]) - imag(valuesWant[i])
-		deltaL2 = math.Sqrt(deltaReal*deltaReal + deltaImag*deltaImag)
+		p.MeanDelta += abs
 
-		p.diff = append(p.diff, Stats{Real: deltaReal, Imag: deltaImag, L2: deltaL2})
-
-		deltaReal = math.Abs(deltaReal)
-		deltaImag = math.Abs(deltaImag)
-
-		p.precReal = append(p.precReal, deltaReal)
-		p.precImag = append(p.precImag, deltaImag)
-		p.precL2 = append(p.precL2, deltaL2)
-
-		p.MeanDelta.Real += deltaReal
-		p.MeanDelta.Imag += deltaImag
-		p.MeanDelta.L2 += deltaL2
-
-		if deltaReal > p.MaxDelta.Real {
-			p.MaxDelta.Real = deltaReal
-		}
-
-		if deltaImag > p.MaxDelta.Imag {
-			p.MaxDelta.Imag = deltaImag
-		}
-
-		if deltaL2 > p.MaxDelta.L2 {
-			p.MaxDelta.L2 = deltaL2
+		if abs > p.MaxDelta {
+			p.MaxDelta = abs
 		}
 	}
 }
 
 func (p *PrecisionStats) Finalize() {
 
-	p.MeanDelta.Real /= float64(len(p.diff))
-	p.MeanDelta.Imag /= float64(len(p.diff))
-	p.MeanDelta.L2 /= float64(len(p.diff))
-
-	//p.MedianDelta = calcmedian(p.diff)
-
 	p.StdPrecision = p.calcstandarddeviation(p.diff)
-
 	p.MinPrecision = deltaToPrecision(p.MaxDelta)
+
+	p.MeanDelta /= float64(len(p.diff))
 	p.MeanPrecision = deltaToPrecision(p.MeanDelta)
-	//p.MedianPrecision = deltaToPrecision(p.MedianDelta)
-
-	/*
-		p.cdfResol = 500
-
-		p.RealDist = make([]struct {
-			Prec  float64
-			Count int
-		}, p.cdfResol)
-		p.ImagDist = make([]struct {
-			Prec  float64
-			Count int
-		}, p.cdfResol)
-		p.L2Dist = make([]struct {
-			Prec  float64
-			Count int
-		}, p.cdfResol)
-
-
-		p.calcCDF(p.precReal, p.RealDist)
-		p.calcCDF(p.precImag, p.ImagDist)
-		p.calcCDF(p.precL2, p.L2Dist)
-	*/
 }
 
 func (prec *PrecisionStats) ToCSV() []string {
 	return []string{
-		fmt.Sprintf("%d", prec.LogN),
 		fmt.Sprintf("%d", prec.H),
-		fmt.Sprintf("%d", prec.Depth),
-		fmt.Sprintf("%d", prec.LogScale),
-		fmt.Sprintf("%d", prec.LogSlots),
-		fmt.Sprintf("%.4f", prec.MinPrecision.Real),
-		fmt.Sprintf("%.4f", prec.MeanPrecision.Real),
-		//fmt.Sprintf("%.4f", prec.MedianPrecision.Real),
-		fmt.Sprintf("%.4f", prec.StdPrecision.Real),
-		fmt.Sprintf("%.4f", prec.MinPrecision.Imag),
-		fmt.Sprintf("%.4f", prec.MeanPrecision.Imag),
-		//fmt.Sprintf("%.4f", prec.MedianPrecision.Imag),
-		fmt.Sprintf("%.4f", prec.StdPrecision.Imag),
+		fmt.Sprintf("%.4f", prec.MinPrecision),
+		fmt.Sprintf("%.4f", prec.MeanPrecision),
+		fmt.Sprintf("%.4f", prec.StdPrecision),
 	}
 }
 
-func (p *PrecisionStats) calcstandarddeviation(diff []Stats) (std Stats) {
-	std = Stats{}
+func (p *PrecisionStats) calcstandarddeviation(diff []float64) (std float64) {
 
-	var mReal, mImag, mL2 float64
+	var mean float64
 	for _, d := range diff {
-
-		mReal += d.Real
-		mImag += d.Imag
-		mL2 += d.L2
+		mean += d
 	}
 
 	n := float64(len(diff))
 
-	mReal /= n
-	mImag /= n
-	mL2 /= n
-
-	var real, imag, l2 float64
-
-	scale := float64(int(1 << p.LogScale))
+	mean /= n
 
 	var v float64
 	for _, d := range diff {
-
-		v = (d.Real - mReal) * scale
-		real += v * v
-
-		v = (d.Imag - mImag) * scale
-		imag += v * v
-
-		v = (d.L2 - mL2) * scale
-		l2 += v * v
+		v = (d - mean)
+		std += v * v
 	}
 
-	std.Real = math.Sqrt(real / (n - 1))
-	std.Imag = math.Sqrt(imag / (n - 1))
-	std.L2 = math.Sqrt(l2 / (n - 1))
+	std = math.Log2(math.Sqrt(std / (n - 1)))
 
-	fmt.Printf("STD Real: %7.4f Imag: %7.4f L2 %7.4f\n", std.Real, std.Imag, std.L2)
+	fmt.Printf("STD Log2: %7.4f\n", std)
 
 	return
 }
 
-func deltaToPrecision(c Stats) Stats {
-	return Stats{math.Log2(1 / maxFloat64(c.Real, 1e-16)), math.Log2(1 / maxFloat64(c.Imag, 1e-16)), math.Log2(1 / maxFloat64(c.L2, 1e-16))}
+func deltaToPrecision(c float64) float64 {
+	return math.Log2(1 / maxFloat64(c, 1e-16))
 }
 
 func maxFloat64(a, b float64) (c float64) {
@@ -238,72 +124,4 @@ func maxFloat64(a, b float64) (c float64) {
 	}
 
 	return b
-}
-
-/*
-func (prec *PrecisionStats) calcCDF(precs []float64, res []struct {
-	Prec  float64
-	Count int
-}) {
-	sortedPrecs := make([]float64, len(precs))
-	copy(sortedPrecs, precs)
-	sort.Float64s(sortedPrecs)
-	minPrec := sortedPrecs[0]
-	maxPrec := sortedPrecs[len(sortedPrecs)-1]
-	for i := 0; i < prec.cdfResol; i++ {
-		curPrec := minPrec + float64(i)*(maxPrec-minPrec)/float64(prec.cdfResol)
-		for countSmaller, p := range sortedPrecs {
-			if p >= curPrec {
-				res[i].Prec = curPrec
-				res[i].Count = countSmaller
-				break
-			}
-		}
-	}
-}
-*/
-
-func calcmedian(values []Stats) (median Stats) {
-
-	tmp := make([]float64, len(values))
-
-	for i := range values {
-		tmp[i] = values[i].Real
-	}
-
-	sort.Float64s(tmp)
-
-	for i := range values {
-		values[i].Real = tmp[i]
-	}
-
-	for i := range values {
-		tmp[i] = values[i].Imag
-	}
-
-	sort.Float64s(tmp)
-
-	for i := range values {
-		values[i].Imag = tmp[i]
-	}
-
-	for i := range values {
-		tmp[i] = values[i].L2
-	}
-
-	sort.Float64s(tmp)
-
-	for i := range values {
-		values[i].L2 = tmp[i]
-	}
-
-	index := len(values) / 2
-
-	if len(values)&1 == 1 || index+1 == len(values) {
-		return Stats{values[index].Real, values[index].Imag, values[index].L2}
-	}
-
-	return Stats{(values[index].Real + values[index+1].Real) / 2,
-		(values[index].Imag + values[index+1].Imag) / 2,
-		(values[index].L2 + values[index+1].L2) / 2}
 }

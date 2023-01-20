@@ -28,8 +28,8 @@ func NewContext(LogN, H, LogScale int) (c *Context) {
 	var params ckks.Parameters
 	if params, err = ckks.NewParametersFromLiteral(ckks.ParametersLiteral{
 		LogN:     LogN,
-		LogQ:     []int{60, LogScale, LogScale},
-		LogP:     []int{61},
+		LogQ:        []int{60, 45, 45, 45, 45},
+		LogP:        []int{61, 61},
 		H:        H,
 		LogSlots: LogN - 1,
 		LogScale: LogScale,

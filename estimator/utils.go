@@ -60,9 +60,9 @@ func SubSTD(a, b *big.Float) (c *big.Float) {
 
 func MulSTD(N, a, b *big.Float) (c *big.Float) {
 	c = new(big.Float).Mul(a, b)
-	tmp := new(big.Float).Quo(N, NewFloat(2))
-	tmp.Sqrt(tmp)
-	c.Mul(c, tmp)
+	//tmp := new(big.Float).Quo(N, NewFloat(2))
+	//tmp.Sqrt(tmp)
+	c.Mul(c, new(big.Float).Sqrt(N))
 	return
 }
 
@@ -73,7 +73,6 @@ func MinInt(a, b int) (c int) {
 
 	return a
 }
-
 
 func STD(slice []float64)(std float64){
 

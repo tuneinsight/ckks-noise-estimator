@@ -52,7 +52,7 @@ func NewCiphertextSK(pt Element) Element {
 
 func NewCiphertextPK(pt Element) Element {
 
-	oneTwelve := NewFloat(4)
+	oneTwelve := NewFloat(1)
 	oneTwelve.Quo(oneTwelve, NewFloat(12))
 	oneTwelve.Sqrt(oneTwelve)
 

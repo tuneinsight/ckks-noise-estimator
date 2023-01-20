@@ -22,7 +22,13 @@ func NewLinearTransform(diags map[int]float64, scale interface{}, Level, LogSlot
 	Diagonales := make(map[int]Element)
 	for j := range Index {
 		for _, i := range Index[j] {
-			Diagonales[j+i] = NewPlaintext(new(big.Float).Mul(NewFloat(diags[j+i]), NewFloat(scale)), nil, Level)
+
+			v, ok := diags[j+i]
+			if !ok {
+				v = diags[j+i-slots]
+			}
+
+			Diagonales[j+i] = NewPlaintext(new(big.Float).Mul(NewFloat(v), NewFloat(scale)), nil, Level)
 		}
 	}
 
@@ -56,6 +62,7 @@ func (e *Estimator) LinearTransform(el0 Element, LT LinearTransform) (el1 Elemen
 		tmp := NewPlaintext(nil, nil, Level)
 
 		for _, i := range index[j] {
+
 			if i == 0{
 				tmp = e.Add(tmp, e.Mul(el0P, LT.Diagonales[j])) // el0 * P * diag[j]
 			}else{
@@ -63,8 +70,12 @@ func (e *Estimator) LinearTransform(el0 Element, LT LinearTransform) (el1 Elemen
 			}
 		}
 
-		// Rotate n2 of sum(P * Rotate(el0) * diags) / P
-		el1 = e.Add(el1, e.KeySwitchLazy(e.ModDown(tmp)))
+		if j != 0{
+			// Rotate n2 of sum(P * Rotate(el0) * diags) / P
+			el1 = e.Add(el1, e.KeySwitchLazy(e.ModDown(tmp)))
+		}else{
+			el1 = e.Add(el1, tmp)
+		}
 	}
 
 	el1 = e.ModDown(el1)

@@ -42,7 +42,6 @@ func (e *Estimator) Std(el0 Element) (stdf64 float64) {
 	std := new(big.Float).Mul(el0.Noise[0], el0.Noise[0])
 
 	sk := new(big.Float).Set(e.H)
-	sk.Quo(sk, NewFloat(2)) // better ring expansion bound
 
 	var tmp = new(big.Float)
 
@@ -154,6 +153,10 @@ func (e *Estimator) Mul(el0 Element, el1 interface{}) (el2 Element) {
 	return
 }
 
+func (e *Estimator) KeySwitch(el0 Element) (el1 Element){
+	return e.ModDown(e.KeySwitchLazy(el0))
+}
+
 // KeySwitchLazy returns P * el0 + ks(el0)
 func (e *Estimator) KeySwitchLazy(el0 Element) (el1 Element){
 
@@ -211,11 +214,16 @@ func (e *Estimator) Relinearize(el0 Element) (el1 Element) {
 //
 func (e *Estimator) KeySwitchRawLazy(level int, eCt, eKey, H *big.Float) (eKeySwitch *big.Float) {
 
-	// var(noise_ct) * var(H) * P
-	eKeySwitch = new(big.Float).Set(e.P)
-	eKeySwitch.Mul(eKeySwitch, eCt)
-	eKeySwitch.Mul(eKeySwitch, eCt)
-	eKeySwitch.Mul(eKeySwitch, H)
+	stdSk := new(big.Float).Set(H)
+	stdSk.Sqrt(stdSk)
+	stdSk.Quo(stdSk, e.N)
+
+	// P * eCt * H
+	eKeySwitch = MulSTD(e.N, eCt, stdSk)
+	eKeySwitch.Mul(eKeySwitch, e.P)
+	
+	oneTwelveSqrt := NewFloat(12)
+	oneTwelveSqrt.Sqrt(oneTwelveSqrt)
 
 	// var(noise_ct) * var(H) * P + var(ekey) * sum(var(q_alpha_i)))
 	decompRNS := DecompRNS(level, e.LevelP)
@@ -228,25 +236,21 @@ func (e *Estimator) KeySwitchRawLazy(level int, eCt, eKey, H *big.Float) (eKeySw
 			end = level + 1
 		}
 
-		qalpha := NewFloat(1)
-
+		//std(q_alpha_i) * eKey
+		qalphai := NewFloat(1)
 		for i := start; i < end; i++ {
-			qalpha.Mul(qalpha, e.Q[i])
+			qalphai.Mul(qalphai, e.Q[i])
 		}
 
-		qalpha.Mul(qalpha, qalpha)
-		qalpha.Quo(qalpha, NewFloat(12))
-		qalpha.Mul(qalpha, eKey)
-		qalpha.Mul(qalpha, eKey)
+		//qalphai/sqrt(12)
+		qalphai.Quo(qalphai, oneTwelveSqrt)
 
-		eKeySwitch.Add(eKeySwitch, qalpha)
+		// eKey * qalphai/sqrt(12)
+		qalphai = MulSTD(e.N, qalphai, eKey)
+
+		// eCt * H + sum(eKey * qalphai/sqrt(12))
+		eKeySwitch = AddSTD(eKeySwitch, qalphai)
 	}
-
-	// N * (P * var(eCt) + var(ekey) * sum(var(q_alpha_i)))
-	eKeySwitch.Mul(eKeySwitch, e.N)
-
-	// sqrt(N * (P * var(eCt) + var(ekey) * sum(var(q_alpha_i))))
-	eKeySwitch.Sqrt(eKeySwitch)
 
 	return
 }
@@ -264,6 +268,7 @@ func (e *Estimator) Rescale(el0 Element) (el1 Element) {
 func (e *Estimator) DivRound(el0 Element, q *big.Float) (el1 Element) {
 
 	el1.Message = new(big.Float).Quo(el0.Message, q)
+	el1.Level = el0.Level
 
 	el1.Noise = make([]*big.Float, el0.Degree()+1)
 

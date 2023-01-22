@@ -6,6 +6,7 @@ import (
 	"time"
 	"fmt"
 	"runtime"
+	"math"
 
 	"github.com/tuneinsight/ckks-bootstrapping-precision/estimator"
 	"github.com/tuneinsight/ckks-bootstrapping-precision/stats"
@@ -17,12 +18,13 @@ import (
 
 var (
 	LogN     = 16                     // Log2 ring degree
-	LogSlots = 15                     // Log2 #slots
+	LogSlots = 14                     // Log2 #slots
 	LogScale = 45                     // Log2 scaling factor
 	UseSK    = false                  // True to use secret-key encryption
-	NbRuns   = 8                      // Number of recorded events
+	NbRuns   = 32                      // Number of recorded events
 	LogBSGSRatio = 2                  // Ratio N2/N1
 	LtType   = advanced.SlotsToCoeffs //advanced.CoeffsToSlots //
+	Record   = true                  // Record in CSV
 )
 
 func main() {
@@ -43,36 +45,40 @@ func main() {
 		keyType = "pk"
 	}
 
+	var f *os.File
+	var w *csv.Writer
+	var err error
 	
-	f, err := os.Create(fmt.Sprintf("data/experiment_%s_%s_logslots_%d_runs_%d_id_%d.csv", s, keyType, LogSlots, NbRuns, time.Now().Unix()))
-	if err != nil {
-		panic(err)
+	if Record{
+		if f, err = os.Create(fmt.Sprintf("data/experiment_%s_%s_logslots_%d_runs_%d_id_%d.csv", s, keyType, LogSlots, NbRuns, time.Now().Unix())); err != nil{
+			panic(err)
+		}
+
+		defer f.Close()
+
+		w = csv.NewWriter(f)
+
+		Header := []string{
+			"H",
+			"Depth",
+			stats.Header[0],
+			stats.Header[1],
+			stats.Header[2],
+			"Estimation",
+		}
+
+		// CSV Header
+		if err := w.Write(Header); err != nil {
+			panic(err)
+		}
+
+		w.Flush()
 	}
-	defer f.Close()
-
-	w := csv.NewWriter(f)
-
-	Header := []string{
-		"H",
-		"Depth",
-		stats.Header[0],
-		stats.Header[1],
-		stats.Header[2],
-		"Estimation",
-	}
-
-	// CSV Header
-	if err := w.Write(Header); err != nil {
-		panic(err)
-	}
-
-	w.Flush()
 	
-
 	// H: Hamming weight
 	// Depth: matrix decomposition
 	for H := 32; H <= 32768; H <<= 1 {
-		for Depth := 15; Depth > 1; Depth-- {
+		for Depth := 14; Depth > 1; Depth-- {
 
 			fmt.Printf("%s - %s - H:%d - Depth: %d\n", s, keyType, H, Depth)
 
@@ -104,13 +110,13 @@ func main() {
 
 			fmt.Println(data)
 
-			
-			if err := w.Write(data); err != nil {
-				panic(err)
+			if Record{
+				if err := w.Write(data); err != nil {
+					panic(err)
+				}
+
+				w.Flush()
 			}
-
-			w.Flush()
-
 		}
 	}
 }
@@ -425,7 +431,7 @@ func EstimateHomomorphicEncodingNoise(params ckks.Parameters, ecd ckks.Encoder, 
 
 	LTs := GetEncodingMatrixSTD(params, ecd, encodingMatrixLiteral)
 
-	plaintexterrorstd := 4.0/12.0 //flooring error
+	plaintexterrorstd := 1.0/12.0 //rounding error
 
 	pt := estimator.NewPlaintext(estimator.STD(values) * params.DefaultScale().Float64(), plaintexterrorstd, params.MaxLevel())
 
@@ -464,18 +470,35 @@ func GetEncodingMatrixSTD(params ckks.Parameters, ecd ckks.Encoder, encodingMatr
 
 	LTs = make([]estimator.LinearTransform, len(encodingMatrices))
 
-	buff := make([]float64, params.N())
+	logdSlots := params.LogSlots()
+	if logdSlots < encodingMatrixLiteral.LogN-1 && encodingMatrixLiteral.RepackImag2Real {
+		logdSlots++
+	}
+
+	dslots := 1<<logdSlots
+
+	//ltType := encodingMatrixLiteral.LinearTransformType
+	//RepackImag2Real := encodingMatrixLiteral.RepackImag2Real
 
 	for i, matrix := range encodingMatrices{
 
 		m := make(map[int][2]float64)
 
 		for j, diag := range matrix{
-			m[j] = GetSTDEncodedVector(ecd, params.N(), params.LogSlots(), diag, buff)
+
+			if encodingMatrixLiteral.LinearTransformType == advanced.CoeffsToSlots{
+				if  i == len(encodingMatrices)-1{
+					m[j] = GetSTDEncodedVector(ecd, params.N(), logdSlots, diag)
+				}else{
+					m[j] = GetSTDEncodedVector(ecd, params.N(), params.LogSlots(), diag)
+				}
+			}else{
+				m[j] = GetSTDEncodedVector(ecd, params.N(), logdSlots, diag)
+			}
 
 			if encodingMatrixLiteral.LinearTransformType == advanced.SlotsToCoeffs{
-				m[j] = [2]float64{m[j][0], m[j][1]/181.01933598375618}
-			}
+				m[j] = [2]float64{m[j][0], m[j][1]/math.Sqrt(float64(dslots))}
+			} 
 		}
 
 		Level := encodingMatrixLiteral.LevelStart-i
@@ -487,15 +510,21 @@ func GetEncodingMatrixSTD(params ckks.Parameters, ecd ckks.Encoder, encodingMatr
 }
 
 
-func GetSTDEncodedVector(ecd ckks.Encoder, N, LogSlots int, a []complex128, b []float64) ([2]float64){
+func GetSTDEncodedVector(ecd ckks.Encoder, N, LogSlots int, a []complex128) ([2]float64){
 
-	ecd.IFFT(a, LogSlots)
+	vec := make([]complex128, 1<<LogSlots)
+
+	copy(vec, a)
+
+	ecd.IFFT(vec, LogSlots)
+
+	b := make([]float64, N)
 
 	slots := 1<<LogSlots
 	gap := N/(2*slots)
 	for i, j := 0, N>>1; i < slots; i, j = i+gap, j+gap{
-		b[i] = real(a[i])
-		b[j] = imag(a[i])
+		b[i] = real(vec[i])
+		b[j] = imag(vec[i])
 	}
 
 	params := ecd.Parameters()

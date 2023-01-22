@@ -2,11 +2,12 @@ package main
 
 import (
 	"encoding/csv"
-	"fmt"
-	"math"
 	"os"
 	"time"
+	"fmt"
+	"runtime"
 
+	"github.com/tuneinsight/ckks-bootstrapping-precision/estimator"
 	"github.com/tuneinsight/ckks-bootstrapping-precision/stats"
 	"github.com/tuneinsight/lattigo/v4/ckks"
 	"github.com/tuneinsight/lattigo/v4/ckks/advanced"
@@ -18,8 +19,10 @@ var (
 	LogN     = 16                     // Log2 ring degree
 	LogSlots = 15                     // Log2 #slots
 	LogScale = 45                     // Log2 scaling factor
+	UseSK    = false                  // True to use secret-key encryption
 	NbRuns   = 8                      // Number of recorded events
-	LtType   = advanced.CoeffsToSlots //advanced.SlotsToCoeffs //
+	LogBSGSRatio = 2                  // Ratio N2/N1
+	LtType   = advanced.SlotsToCoeffs //advanced.CoeffsToSlots //
 )
 
 func main() {
@@ -32,7 +35,16 @@ func main() {
 		s = "s2c"
 	}
 
-	f, err := os.Create(fmt.Sprintf("data/experiment_%s_%d_%d_%d.csv", s, LogSlots, NbRuns, time.Now().Unix()))
+	var keyType string
+	switch UseSK{
+	case true:
+		keyType = "sk"
+	case false:
+		keyType = "pk"
+	}
+
+	
+	f, err := os.Create(fmt.Sprintf("data/experiment_%s_%s_logslots_%d_runs_%d_id_%d.csv", s, keyType, LogSlots, NbRuns, time.Now().Unix()))
 	if err != nil {
 		panic(err)
 	}
@@ -40,19 +52,29 @@ func main() {
 
 	w := csv.NewWriter(f)
 
+	Header := []string{
+		"H",
+		"Depth",
+		stats.Header[0],
+		stats.Header[1],
+		stats.Header[2],
+		"Estimation",
+	}
+
 	// CSV Header
-	if err := w.Write(stats.Header); err != nil {
+	if err := w.Write(Header); err != nil {
 		panic(err)
 	}
 
 	w.Flush()
+	
 
 	// H: Hamming weight
 	// Depth: matrix decomposition
 	for H := 32; H <= 32768; H <<= 1 {
-		for Depth := 4; Depth > 2; Depth-- {
+		for Depth := 15; Depth > 1; Depth-- {
 
-			fmt.Printf("H:%d - Depth: %d\n", H, Depth)
+			fmt.Printf("%s - %s - H:%d - Depth: %d\n", s, keyType, H, Depth)
 
 			c := NewContext(H, Depth, LogSlots, LtType)
 
@@ -61,15 +83,34 @@ func main() {
 				// Evaluates the linear transform
 				// Records the precision stats
 				c.ComputeStats()
+
+				runtime.GC()
 			}
 
 			c.Finalize()
 
-			if err := w.Write(c.ToCSV()); err != nil {
+			stats := c.ToCSV()
+
+			stdPredicted := EstimateHomomorphicEncodingNoise(c.params, c.ecd1N, c.encodingMatrixLiteral)
+
+			data := []string{
+				fmt.Sprintf("%d", H),
+				fmt.Sprintf("%d", Depth),
+				stats[0],
+				stats[1],
+				stats[2],
+				fmt.Sprintf("%.5f", stdPredicted),
+			}
+
+			fmt.Println(data)
+
+			
+			if err := w.Write(data); err != nil {
 				panic(err)
 			}
 
 			w.Flush()
+
 		}
 	}
 }
@@ -84,6 +125,7 @@ type Context struct {
 	eval           advanced.Evaluator      // Evaluator
 	rotations      []int                   // Rotations needed for the linear transform
 	encodingMatrix advanced.EncodingMatrix // Encoded linear transform
+	encodingMatrixLiteral advanced.EncodingMatrixLiteral
 	stats          *stats.PrecisionStats   // Precision stats
 }
 
@@ -141,7 +183,7 @@ func NewContext(H, depth, logSlots int, ltType advanced.LinearTransformType) (c 
 		LevelStart:          params1N.MaxLevel(),
 		Levels:              Levels,
 		RepackImag2Real:     true,
-		LogBSGSRatio:        2,
+		LogBSGSRatio:        LogBSGSRatio,
 	}
 
 	// Gets the rotations indexes for CoeffsToSlots
@@ -160,70 +202,22 @@ func NewContext(H, depth, logSlots int, ltType advanced.LinearTransformType) (c 
 		eval:           eval,
 		rotations:      rotations,
 		encodingMatrix: encodingMatrix,
-		stats:          stats.NewPrecisionStats(H),
+		encodingMatrixLiteral: encodingMatrixLiteral,
+		stats:          stats.NewPrecisionStats(),
 	}
-}
-
-func GetEncodingMatricesSTD(params ckks.Parameters, ecd ckks.Encoder, encodingMatrix advanced.EncodingMatrix){
-
-	ringQ := params.RingQ().AtLevel(1)
-	tmp := ringQ.NewPoly()
-
-	variances := [][]float64{}
-
-	for _, matrix := range encodingMatrix.Matrices{
-
-		s := []float64{}
-
-		for _, vec := range matrix.Vec{
-			ringQ.INTT(vec.Q, tmp)
-			ringQ.IMForm(tmp, tmp)
-
-			values := ecd.DecodeCoeffs(&rlwe.Plaintext{Value:tmp, MetaData:rlwe.MetaData{Scale:rlwe.NewScale(1)}})
-
-			s = append(s, STD(values))
-		}
-
-		variances = append(variances, s)
-	}
-
-	fmt.Printf("[\n")
-	for i := range variances{
-		fmt.Printf("[")
-		for j := range variances[i]{
-			fmt.Printf("%f, ", variances[i][j])
-		}
-		fmt.Printf("],\n")
-	}
-	fmt.Println()
-}
-
-func STD(slice []float64)(std float64){
-
-	n := float64(len(slice))
-
-	var mean float64
-	for _, c := range slice{
-		mean += c
-	}
-
-	mean /= n
-
-	var tmp float64
-	for _, c := range slice{
-		tmp = (c - mean)
-		std += tmp * tmp
-	}
-
-	std /= (n-1)
-
-	return math.Sqrt(std)
 }
 
 // GenKeys generates a new set of keys.
 func (c *Context) GenKeys() {
+
 	sk := c.kgen.GenSecretKey()
-	c.enc = ckks.NewEncryptor(c.params, sk)
+
+	if UseSK{
+		c.enc = ckks.NewEncryptor(c.params, sk)
+	}else{
+		c.enc = ckks.NewEncryptor(c.params, c.kgen.GenPublicKey(sk))
+	}
+	
 	c.dec = ckks.NewDecryptor(c.params, sk)
 	rtks := c.kgen.GenRotationKeysForRotations(c.rotations, true, sk)
 	c.eval = c.eval.WithKey(rlwe.EvaluationKey{Rlk: nil, Rtks: rtks})
@@ -250,14 +244,9 @@ func (c *Context) ComputeStats() {
 		}
 
 		// Splits between real and imaginary
-		valuesReal := make([]float64, params.Slots())
+		valuesReal, valuesImag := make([]float64, params.Slots()), make([]float64, params.Slots())
 		for i := range valuesReal {
-			valuesReal[i] = real(values[i])
-		}
-
-		valuesImag := make([]float64, params.Slots())
-		for i := range valuesImag {
-			valuesImag[i] = imag(values[i])
+			valuesReal[i], valuesImag[i] = real(values[i]), imag(values[i])
 		}
 
 		// Applies bit-reverse on the original complex vector
@@ -278,7 +267,7 @@ func (c *Context) ComputeStats() {
 		ciphertext := enc.EncryptNew(plaintext)
 
 		// Applies the homomorphic DFT
-		ct0, ct1 := CoeffsToSlotsNew(eval, ciphertext, c.encodingMatrix)
+		ct0, ct1 := eval.CoeffsToSlotsNew(ciphertext, c.encodingMatrix)
 
 		var diff []float64
 
@@ -289,14 +278,11 @@ func (c *Context) ComputeStats() {
 
 			slots := params.Slots()
 			twoslots := slots<<1
-
-			// Plaintext circuit
-			vec := make([]complex128, twoslots)
-
+	
 			// Embed real vector into the complex vector (trivial)
+			vec := make([]complex128, twoslots)
 			for i, j := 0, slots; i < slots; i, j = i+1, j+1 {
-				vec[i] = complex(valuesReal[i], 0)
-				vec[j] = complex(valuesImag[i], 0)
+				vec[i], vec[j] = complex(valuesReal[i], 0), complex(valuesImag[i], 0)
 			}
 
 			// IFFT
@@ -308,8 +294,7 @@ func (c *Context) ComputeStats() {
 			// Extract complex vector into real vector
 			vecFloat := make([]float64, params.N())
 			for i, idx, jdx := 0, 0, params.N()>>1; i < twoslots; i, idx, jdx = i+1, idx+gap/2, jdx+gap/2 {
-				vecFloat[idx] = real(vec[i])
-				vecFloat[jdx] = imag(vec[i])
+				vecFloat[idx], vecFloat[jdx] = real(vec[i]), imag(vec[i])
 			}
 
 			eval.Sub(ct0, ecd.EncodeCoeffsNew(vecFloat, ct0.Level(), ct0.Scale), ct0)
@@ -321,11 +306,9 @@ func (c *Context) ComputeStats() {
 		} else {
 
 			// Embed the reverence vectors into the complex vector (trivial)
-			vec0 := make([]complex128, params.Slots())
-			vec1 := make([]complex128, params.Slots())
+			vec0, vec1 := make([]complex128, params.Slots()), make([]complex128, params.Slots())
 			for i := 0; i < params.Slots(); i++ {
-				vec0[i] = complex(valuesReal[i], 0)
-				vec1[i] = complex(valuesImag[i], 0)
+				vec0[i], vec1[i] = complex(valuesReal[i], 0), complex(valuesImag[i], 0)
 			}
 
 			// IFFT
@@ -333,8 +316,7 @@ func (c *Context) ComputeStats() {
 			ecd.IFFT(vec1, params.LogSlots())
 
 			// Extract complex vectors into real vectors
-			vecReal := make([]float64, params.N())
-			vecImag := make([]float64, params.N())
+			vecReal, vecImag := make([]float64, params.N()), make([]float64, params.N())
 			for i, j := 0, params.Slots(); i < params.Slots(); i, j = i+1, j+1 {
 				vecReal[i], vecReal[j] = real(vec0[i]), imag(vec0[i])
 				vecImag[i], vecImag[j] = real(vec1[i]), imag(vec1[i])
@@ -357,16 +339,10 @@ func (c *Context) ComputeStats() {
 
 		slots := params.Slots()
 
-		// Generates the n first slots of the test vector (real part to encode)
-		valuesReal := make([]complex128, params.Slots())
+		// Generates the n first slots of the test vector (real and imag part to encode)
+		valuesReal, valuesImag := make([]complex128, params.Slots()), make([]complex128, params.Slots())
 		for i := range valuesReal {
-			valuesReal[i] = complex(utils.RandFloat64(-1, 1), 0)
-		}
-
-		// Generates the n first slots of the test vector (imaginary part to encode)
-		valuesImag := make([]complex128, params.Slots())
-		for i := range valuesImag {
-			valuesImag[i] = complex(utils.RandFloat64(-1, 1), 0)
+			valuesReal[i], valuesImag[i] = complex(utils.RandFloat64(-1, 1), 0), complex(utils.RandFloat64(-1, 1), 0)
 		}
 
 		// If sparse, there there is the space to store both vectors in one
@@ -393,14 +369,11 @@ func (c *Context) ComputeStats() {
 		}
 
 		// Applies the homomorphic DFT
-		res := SlotsToCoeffsNew(eval, ct0, ct1, c.encodingMatrix)
+		res := eval.SlotsToCoeffsNew(ct0, ct1, c.encodingMatrix)
 
 		// Decrypt and decode in the ring
-		
-
 		// The result is always returned as a single complex vector, so if full-packing (2 initial vectors)
 		// then repacks both vectors together
-		
 		if params.LogSlots() == params.LogN()-1 {
 			for i := range valuesReal {
 				valuesReal[i] += complex(0, real(valuesImag[i]))
@@ -414,8 +387,7 @@ func (c *Context) ComputeStats() {
 		valuesFloat := make([]float64, params.N())
 		gap := params.N() / (2*slots)
 		for i, idx, jdx := 0, 0, params.N()>>1; i < slots; i, idx, jdx = i+1, idx+gap, jdx+gap {
-			valuesFloat[idx] = real(valuesReal[i])
-			valuesFloat[jdx] = imag(valuesReal[i])
+			valuesFloat[idx], valuesFloat[jdx] = real(valuesReal[i]), imag(valuesReal[i])
 		}
 
 		eval.Sub(res, ecd.EncodeCoeffsNew(valuesFloat, res.Level(), res.Scale), res)
@@ -441,115 +413,100 @@ func (c *Context) ToCSV() []string {
 	return c.stats.ToCSV()
 }
 
-// CoeffsToSlotsNew applies the homomorphic encoding and returns the result on new ciphertexts.
-// Homomorphically encodes a complex vector vReal + i*vImag.
-// If the packing is sparse (n < N/2), then returns ctReal = Ecd(vReal || vImag) and ctImag = nil.
-// If the packing is dense (n == N/2), then returns ctReal = Ecd(vReal) and ctImag = Ecd(vImag).
-func CoeffsToSlotsNew(eval advanced.Evaluator, ctIn *rlwe.Ciphertext, ctsMatrices advanced.EncodingMatrix) (ctReal, ctImag *rlwe.Ciphertext) {
 
-	params := eval.Parameters()
+func EstimateHomomorphicEncodingNoise(params ckks.Parameters, ecd ckks.Encoder, encodingMatrixLiteral advanced.EncodingMatrixLiteral) (std float64){
 
-	ctReal = ckks.NewCiphertext(params, 1, ctsMatrices.LevelStart)
-
-	if params.LogSlots() == params.LogN()-1 {
-		ctImag = ckks.NewCiphertext(params, 1, ctsMatrices.LevelStart)
+	values := make([]float64, params.N())
+	for i := range values{
+		values[i] = utils.RandFloat64(-1, 1)
 	}
 
-	CoeffsToSlots(eval, ctIn, ctsMatrices, ctReal, ctImag)
+	est := estimator.NewEstimator(params.N(), params.HammingWeight(), params.Q(), params.P())
+
+	LTs := GetEncodingMatrixSTD(params, ecd, encodingMatrixLiteral)
+
+	plaintexterrorstd := 4.0/12.0 //flooring error
+
+	pt := estimator.NewPlaintext(estimator.STD(values) * params.DefaultScale().Float64(), plaintexterrorstd, params.MaxLevel())
+
+	var ct estimator.Element
+	if UseSK{
+		ct = estimator.NewCiphertextSK(pt)
+	}else{
+		ct = estimator.NewCiphertextPK(pt)
+	}
+	
+	// Real/Imag packing
+	if LtType == advanced.SlotsToCoeffs && params.LogSlots() == params.LogN()-1{
+		ct = est.Add(ct, ct)
+	}
+	
+	// DFT
+	for i := range LTs{
+		ct = est.LinearTransform(ct, LTs[i])
+		ct = est.Rescale(ct)
+	}
+
+	// Real/Imag extraction
+	if LtType == advanced.CoeffsToSlots{
+		ct = est.Add(ct, est.KeySwitch(ct)) // Extract real/imag part
+		if params.LogSlots() < params.LogN()-1{
+			ct = est.Add(ct, est.KeySwitch(ct)) // Rotates by slots/2 and adds
+		}
+	}
+	
+	return est.Std(ct)
+}
+
+func GetEncodingMatrixSTD(params ckks.Parameters, ecd ckks.Encoder, encodingMatrixLiteral advanced.EncodingMatrixLiteral) (LTs []estimator.LinearTransform){
+
+	encodingMatrices := encodingMatrixLiteral.ComputeDFTMatrices()
+
+	LTs = make([]estimator.LinearTransform, len(encodingMatrices))
+
+	buff := make([]float64, params.N())
+
+	for i, matrix := range encodingMatrices{
+
+		m := make(map[int][2]float64)
+
+		for j, diag := range matrix{
+			m[j] = GetSTDEncodedVector(ecd, params.N(), params.LogSlots(), diag, buff)
+
+			if encodingMatrixLiteral.LinearTransformType == advanced.SlotsToCoeffs{
+				m[j] = [2]float64{m[j][0], m[j][1]/181.01933598375618}
+			}
+		}
+
+		Level := encodingMatrixLiteral.LevelStart-i
+
+		LTs[i] = estimator.NewLinearTransform(m, params.Q()[Level], Level, params.LogSlots(), encodingMatrixLiteral.LogBSGSRatio)
+	}
+
 	return
 }
 
-// CoeffsToSlots applies the homomorphic encoding and returns the results on the provided ciphertexts.
-// Homomorphically encodes a complex vector vReal + i*vImag of size n on a real vector of size 2n.
-// If the packing is sparse (n < N/2), then returns ctReal = Ecd(vReal || vImag) and ctImag = nil.
-// If the packing is dense (n == N/2), then returns ctReal = Ecd(vReal) and ctImag = Ecd(vImag).
-func CoeffsToSlots(eval advanced.Evaluator, ctIn *rlwe.Ciphertext, ctsMatrices advanced.EncodingMatrix, ctReal, ctImag *rlwe.Ciphertext) {
 
-	if ctsMatrices.RepackImag2Real {
+func GetSTDEncodedVector(ecd ckks.Encoder, N, LogSlots int, a []complex128, b []float64) ([2]float64){
 
-		params := eval.Parameters()
+	ecd.IFFT(a, LogSlots)
 
-		zV := ctIn.CopyNew()
-
-		dft(eval, ctIn, ctsMatrices.Matrices, zV)
-
-		eval.Conjugate(zV, ctReal)
-
-		var tmp *rlwe.Ciphertext
-		if ctImag != nil {
-			tmp = ctImag
-		} else {
-			tmp = rlwe.NewCiphertextAtLevelFromPoly(ctReal.Level(), eval.BuffCt().Value[:2])
-			tmp.IsNTT = true
-		}
-
-		// Imag part
-		eval.Sub(zV, ctReal, tmp)
-		eval.MultByConst(tmp, complex(0, -1), tmp)
-
-		// Real part
-		eval.Add(ctReal, zV, ctReal)
-
-		// If repacking, then ct0 and ct1 right n/2 slots are zero.
-		if params.LogSlots() < params.LogN()-1 {
-			eval.Rotate(tmp, params.Slots(), tmp)
-			eval.Add(ctReal, tmp, ctReal)
-		}
-
-		zV = nil
-
-	} else {
-		dft(eval, ctIn, ctsMatrices.Matrices, ctReal)
-	}
-}
-
-// SlotsToCoeffsNew applies the homomorphic decoding and returns the result on a new ciphertext.
-// Homomorphically decodes a real vector of size 2n on a complex vector vReal + i*vImag of size n.
-// If the packing is sparse (n < N/2) then ctReal = Ecd(vReal || vImag) and ctImag = nil.
-// If the packing is dense (n == N/2), then ctReal = Ecd(vReal) and ctImag = Ecd(vImag).
-func SlotsToCoeffsNew(eval advanced.Evaluator, ctReal, ctImag *rlwe.Ciphertext, stcMatrices advanced.EncodingMatrix) (ctOut *rlwe.Ciphertext) {
-
-	params := eval.Parameters()
-
-	if ctReal.Level() < stcMatrices.LevelStart || (ctImag != nil && ctImag.Level() < stcMatrices.LevelStart) {
-		panic("ctReal.Level() or ctImag.Level() < EncodingMatrix.LevelStart")
+	slots := 1<<LogSlots
+	gap := N/(2*slots)
+	for i, j := 0, N>>1; i < slots; i, j = i+gap, j+gap{
+		b[i] = real(a[i])
+		b[j] = imag(a[i])
 	}
 
-	ctOut = ckks.NewCiphertext(params, 1, stcMatrices.LevelStart)
-	SlotsToCoeffs(eval, ctReal, ctImag, stcMatrices, ctOut)
-	return
+	params := ecd.Parameters()
+	ringQ := params.RingQ().AtLevel(0)
+	pt := ckks.NewPlaintext(params, ringQ.Level())
+	ecd.EncodeCoeffs(b, pt)
+	c := ecd.DecodeCoeffs(pt)
 
-}
-
-// SlotsToCoeffsNew applies the homomorphic decoding and returns the result on the provided ciphertext.
-// Homomorphically decodes a real vector of size 2n on a complex vector vReal + i*vImag of size n.
-// If the packing is sparse (n < N/2) then ctReal = Ecd(vReal || vImag) and ctImag = nil.
-// If the packing is dense (n == N/2), then ctReal = Ecd(vReal) and ctImag = Ecd(vImag).
-func SlotsToCoeffs(eval advanced.Evaluator, ctReal, ctImag *rlwe.Ciphertext, stcMatrices advanced.EncodingMatrix, ctOut *rlwe.Ciphertext) {
-	// If full packing, the repacking can be done directly using ct0 and ct1.
-	if ctImag != nil {
-		eval.MultByConst(ctImag, complex(0, 1), ctOut)
-		eval.Add(ctOut, ctReal, ctOut)
-		dft(eval, ctOut, stcMatrices.Matrices, ctOut)
-	} else {
-		dft(eval, ctReal, stcMatrices.Matrices, ctOut)
+	for i := range c{
+		c[i] -= b[i]
 	}
-}
 
-func dft(eval advanced.Evaluator, ctIn *rlwe.Ciphertext, plainVectors []ckks.LinearTransform, ctOut *rlwe.Ciphertext) {
-
-	// Sequentially multiplies w with the provided dft matrices.
-	scale := ctIn.Scale
-	var in, out *rlwe.Ciphertext
-	for i, plainVector := range plainVectors {
-		in, out = ctOut, ctOut
-		if i == 0 {
-			in, out = ctIn, ctOut
-		}
-		eval.LinearTransform(in, plainVector, []*rlwe.Ciphertext{out})
-
-		if err := eval.Rescale(out, scale, out); err != nil {
-			panic(err)
-		}
-	}
+	return [2]float64{estimator.STD(b), estimator.STD(c)}
 }

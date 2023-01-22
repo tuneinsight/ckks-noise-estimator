@@ -6,7 +6,6 @@ import (
 )
 
 var Header = []string{
-	"H",
 	"MIN",
 	"AVG",
 	"STD",
@@ -14,7 +13,6 @@ var Header = []string{
 
 // PrecisionStats is a struct storing statistic about the precision of a CKKS plaintext
 type PrecisionStats struct {
-	H int
 	MaxDelta                           float64
 	MinPrecision                       float64
 	MeanDelta                          float64
@@ -25,9 +23,8 @@ type PrecisionStats struct {
 	prec []float64
 }
 
-func NewPrecisionStats(H int) (prec *PrecisionStats) {
+func NewPrecisionStats() (prec *PrecisionStats) {
 	return &PrecisionStats{
-		H:         H,
 		MaxDelta:  0,
 		MeanDelta: 0,
 
@@ -67,10 +64,9 @@ func (p *PrecisionStats) Finalize() {
 
 func (prec *PrecisionStats) ToCSV() []string {
 	return []string{
-		fmt.Sprintf("%d", prec.H),
-		fmt.Sprintf("%.4f", prec.MinPrecision),
-		fmt.Sprintf("%.4f", prec.MeanPrecision),
-		fmt.Sprintf("%.4f", prec.StdPrecision),
+		fmt.Sprintf("%.5f", prec.MinPrecision),
+		fmt.Sprintf("%.5f", prec.MeanPrecision),
+		fmt.Sprintf("%.5f", prec.StdPrecision),
 	}
 }
 
@@ -92,8 +88,6 @@ func (p *PrecisionStats) calcstandarddeviation(diff []float64) (std float64) {
 	}
 
 	std = math.Log2(math.Sqrt(std / (n - 1)))
-
-	fmt.Printf("STD Log2: %7.4f\n", std)
 
 	return
 }

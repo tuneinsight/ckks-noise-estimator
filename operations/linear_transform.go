@@ -7,13 +7,16 @@ import(
 	"time"
 	"math"
 	"math/rand"
+	"math/big"
 	"github.com/tuneinsight/lattigo/v4/ckks"
 	"github.com/tuneinsight/lattigo/v4/utils"
 	"github.com/tuneinsight/lattigo/v4/rlwe"
+	"github.com/tuneinsight/lattigo/v4/ring"
 	"github.com/tuneinsight/ckks-bootstrapping-precision/stats"
+	"github.com/tuneinsight/ckks-bootstrapping-precision/estimator"
 )
 
-func GetNoiseLinearTransform(LogN, H, LogScale int, nonZeroDiags []int, std float64, nbRuns int){
+func GetNoiseLinearTransform(LogN, H, LogScale int, nonZeroDiags map[int]float64, std float64, nbRuns int){
 
 	f, err := os.Create(fmt.Sprintf("data/linear_transform_%d_%d_%d_%f_%d_%d.csv", LogN, H, LogScale, std, nbRuns, time.Now().Unix()))
 	if err != nil {
@@ -41,7 +44,7 @@ func GetNoiseLinearTransform(LogN, H, LogScale int, nonZeroDiags []int, std floa
 	params := c.params
 
 	diags := make(map[int][]complex128)
-	for _, i := range nonZeroDiags{
+	for i := range nonZeroDiags{
 		diags[i] = make([]complex128, params.Slots())
 	}
 
@@ -57,8 +60,9 @@ func GetNoiseLinearTransform(LogN, H, LogScale int, nonZeroDiags []int, std floa
 		dec := c.dec
 
 		for i, diag := range diags{
+			std := nonZeroDiags[i] * correction
 			for j := range diags[i]{
-				diag[j] = NormComplex(r, std * correction)
+				diag[j] = NormComplex(r, std)
 			}
 		}
 
@@ -81,31 +85,38 @@ func GetNoiseLinearTransform(LogN, H, LogScale int, nonZeroDiags []int, std floa
 
 		eval.LinearTransform(ct, LT, []*rlwe.Ciphertext{ct})
 
+		ct2 := rlwe.NewCiphertextAtLevelFromPoly(ct.Level(), ct.Value)
+		ct2.MetaData = ct.MetaData
+
+		//eval.Rescale(ct2, params.DefaultScale(), ct2)
+
 		want := EvaluateLinearTransform(values, diags, 2)
 
-		pt.Scale = ct.Scale
+		pt.Scale = ct2.Scale
 		ecd.Encode(want, pt, params.LogSlots())
+		eval.Sub(ct2, pt, ct2)
 
-		eval.Sub(ct, pt, ct)
-
-		ct.Scale = rlwe.NewScale(1)
-		dec.Decrypt(ct, pt)
-
-		have := ecd.DecodeCoeffs(pt)
-
-		fmt.Println(have[:4])
-
-		// Compares in the ring
-		c.stats.Update(have)
+		dec.Decrypt(ct2, pt)
+		fmt.Println(STDPoly(params.RingQ().AtLevel(pt.Level()), pt.Value, 1, false))
 	}
+}
 
-	c.Finalize()
-
-	if err := w.Write(c.ToCSV()); err != nil {
-		panic(err)
+func STDPoly(r *ring.Ring, poly *ring.Poly, scale float64, montgomery bool) (std float64){
+	coeffsBig := make([]*big.Int, r.N())
+	for i := range coeffsBig{
+		coeffsBig[i] = new(big.Int)
 	}
-
-	w.Flush()
+	tmp := r.NewPoly()
+	r.INTT(poly, tmp)
+	if montgomery{
+		r.IMForm(tmp, tmp)
+	}
+	r.PolyToBigintCentered(tmp, 1, coeffsBig)
+	values := make([]float64, r.N())
+	for i := range coeffsBig{
+		values[i] = float64(coeffsBig[i].Int64()) / scale
+	}
+	return math.Log2(estimator.STD(values))
 }
 
 func NormComplex(r *rand.Rand, std float64) complex128 {

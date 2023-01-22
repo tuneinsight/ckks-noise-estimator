@@ -2,7 +2,6 @@ package main
 
 import(
 	"fmt"
-	"github.com/tuneinsight/lattigo/v4/utils"
 	"github.com/tuneinsight/lattigo/v4/ckks"
 	"github.com/tuneinsight/lattigo/v4/ckks/advanced"
 	"github.com/tuneinsight/ckks-bootstrapping-precision/estimator"
@@ -41,18 +40,11 @@ func main(){
 		panic(err)
 	}
 
-	values := make([]float64, params.N())
-
-	for i := range values{
-		values[i] = utils.RandFloat64(-1, 1)
-	}
-
 	est := estimator.NewEstimator(params.N(), params.HammingWeight(), params.Q(), params.P())
 
 	LTs := GetSlotsToCoeffsSTD(params, ckks.NewEncoder(params))
 
-	ct := estimator.NewCiphertextSK(estimator.NewPlaintext(estimator.STD(values) * params.DefaultScale().Float64(), nil, params.MaxLevel()))
-
+	ct := estimator.NewCiphertextPK(estimator.NewPlaintext(0.5772058896878792 * params.DefaultScale().Float64(), nil, params.MaxLevel()))
 	
 	switch LtType {
 	case advanced.SlotsToCoeffs:
@@ -65,28 +57,28 @@ func main(){
 
 	for i := range LTs{
 		ct = est.LinearTransform(ct, LTs[i])
+		fmt.Println(est.Std(ct))
 		ct = est.Rescale(ct)
+		fmt.Println(est.Std(ct))
+		fmt.Println()
 	}
+
+
 
 	switch LtType{
 	case advanced.CoeffsToSlots:
+
 		ctConj := est.KeySwitch(ct)
 
 		ct = est.Add(ctConj, ct)
 
 		if params.LogSlots() < params.LogN()-1{
-			ct = est.Add(ct, ct)
+			ct = est.Add(ct, est.KeySwitch(ct))
 		}
 	}
 	
 	fmt.Println(ct.Message)
-	have := est.Std(ct)
-
-	fmt.Println(have)
-}
-
-func p(){
-	fmt.Println()
+	fmt.Println(est.Std(ct))
 }
 
 func GetSlotsToCoeffsSTD(params ckks.Parameters, ecd ckks.Encoder) (LTs []estimator.LinearTransform){
@@ -122,9 +114,6 @@ func GetSlotsToCoeffsSTD(params ckks.Parameters, ecd ckks.Encoder) (LTs []estima
 
 			m[j] = estimator.STD(values)
 		}
-
-		//fmt.Println(m)
-		//fmt.Println()
 
 		Level := encodingMatrixLiteral.LevelStart-i
 

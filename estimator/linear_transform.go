@@ -11,7 +11,10 @@ type LinearTransform struct{
 	Index map[int][]int
 }
 
-func NewLinearTransform(diags map[int]float64, scale interface{}, Level, LogSlots, LogBSGSRatio int) (LT LinearTransform){
+// NewLinearTransform
+//
+// diags: map of non-zero diagonales, with [std plaintext, std encoding error]
+func NewLinearTransform(diags map[int][2]float64, scale interface{}, Level, LogSlots, LogBSGSRatio int) (LT LinearTransform){
 
 	slots := 1<<LogSlots
 
@@ -28,7 +31,7 @@ func NewLinearTransform(diags map[int]float64, scale interface{}, Level, LogSlot
 				v = diags[j+i-slots]
 			}
 
-			Diagonales[j+i] = NewPlaintext(new(big.Float).Mul(NewFloat(v), NewFloat(scale)), nil, Level)
+			Diagonales[j+i] = NewPlaintext(new(big.Float).Mul(NewFloat(v[0]), NewFloat(scale)), new(big.Float).Mul(NewFloat(v[1]), NewFloat(scale)), Level)
 		}
 	}
 
@@ -114,6 +117,13 @@ func BSGSIndex(el interface{}, slots, N1 int) (index map[int][]int, rotN1, rotN2
 	var nonZeroDiags []int
 	switch element := el.(type) {
 	case map[int]float64:
+		nonZeroDiags = make([]int, len(element))
+		var i int
+		for key := range element {
+			nonZeroDiags[i] = key
+			i++
+		}
+	case map[int][2]float64:
 		nonZeroDiags = make([]int, len(element))
 		var i int
 		for key := range element {

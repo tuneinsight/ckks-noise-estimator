@@ -10,6 +10,10 @@ import (
 
 var delta = 1e-15 //float64 precision
 
+const(
+	stdUni = 0.5772058896878792 // Standard deviation of uniform vector [-1, 1]
+)
+
 func TestEstimator(t *testing.T) {
 
 	LogN := 16
@@ -17,8 +21,14 @@ func TestEstimator(t *testing.T) {
 	N := 1<<LogN
 	H := 32768
 
+	sqrtN := math.Sqrt(float64(N)) 
+
+	ptStd := stdUni/(sqrtN/1.73248500) * float64(int(1<<45)) // Standard deviation of encoded plaintext with uniform distribution [-1, 1] with 2^{45} scale
+
 	Q := []uint64{1152921504606584833, 35184372744193, 35184373006337, 35184368025601, 35184376545281}
 	P := []uint64{2305843009211596801, 2305843009210023937} //, 
+
+	level := 4
 
 	stdSk := NewFloat(H)
 	stdSk.Quo(stdSk, NewFloat(N))
@@ -26,76 +36,10 @@ func TestEstimator(t *testing.T) {
 
 	est := NewEstimator(N, H, Q, P)
 
-	t.Run("LinearTransform", func(t *testing.T){
-
-		// EMPIRICALLY VERIFIED (UP TO THERE) for CT-SK & CT-PK
-
-		diags := []map[int]float64{
-			map[int]float64{
-				 0: 0.003906267320465252,
-				 1: 0.0036538916134800097,
-				 2: 0.003382925367883238,
-				 3: 0.0030880284101041902,
-				 4: 0.002762148668487031,
-				 5: 0.002392059056988301,
-				 6: 0.0019530750723170012,
-				 7: 0.0013809426865437015,
-				-7: 0.0013810771517379955,
-				-6: 0.0019531398956096173,
-				-5: 0.0023920937341996994,
-				-4: 0.002762155692814875,
-				-3: 0.0030881846979644947,
-				-2: 0.003382916280984945,
-				-1: 0.00365397976622493,
-			},
-				map[int]float64{
-				    0:0.00024414102316630370,
-				 2048:0.00024414233423388263,
-				 4096:0.00024414206118669165,
-				 6144:0.00024414240022099044, 
-				 8192:0.00024414248708016384, 
-				10240:0.00024414247911935246, 
-				12288:0.00024414180919533906, 
-				14336:0.00024414248329247690, 
-				16384:0.00024414246898360015, 
-				18432:0.00024414239107164240, 
-				20480:0.00024414226649732900, 
-				22528:0.00024414233600733267, 
-				24576:0.00024414232259683394, 
-				26624:0.00024414248311350925, 
-				28672:0.00024414158296428044, 
-				30720:0.00024414248708458494,
-			},
-		}
-
-		level := 4
-
-		LT := NewLinearTransform(diags[0], Q[level], level, LogN-1, 2)
-
-		ct := NewCiphertextSK(NewPlaintext(0.5772058896878792 * (1<<45), nil, level))
-
-		t.Log(est.Std(ct))
-
-		ct = est.LinearTransform(ct, LT)
-
-		t.Log(est.Std(ct))
-
-	})
-
 	t.Run("Add/Pt/Pt", func(t *testing.T) {
 
-		var msg float64 = 1 << 45
-		var err float64 = 3.2
-
-		pt0 := Element{
-			Message: NewFloat(msg),
-			Noise:   []*big.Float{NewFloat(err)},
-		}
-
-		pt1 := Element{
-			Message: NewFloat(msg),
-			Noise:   []*big.Float{NewFloat(err)},
-		}
+		pt0 := NewPlaintext(ptStd, 1/12.0, level)
+		pt1 := NewPlaintext(ptStd, 1/12.0, level)
 
 		pt2 := est.Add(pt0, pt1)
 
@@ -114,18 +58,9 @@ func TestEstimator(t *testing.T) {
 	})
 
 	t.Run("Add/Ct/Pt", func(t *testing.T) {
-		var msg float64 = 1 << 45
-		var err float64 = 3.2
 
-		ct0 := Element{
-			Message: NewFloat(msg),
-			Noise:   []*big.Float{NewFloat(err), NewFloat(err)},
-		}
-
-		pt1 := Element{
-			Message: NewFloat(msg),
-			Noise:   []*big.Float{NewFloat(err)},
-		}
+		ct0 := NewCiphertextPK(NewPlaintext(ptStd, 1/12.0, level))
+		pt1 := NewPlaintext(ptStd, 1/12.0, level)
 
 		ct1 := est.Add(ct0, pt1)
 
@@ -149,18 +84,8 @@ func TestEstimator(t *testing.T) {
 
 	t.Run("Add/Ct/Ct", func(t *testing.T) {
 
-		var msg float64 = 1 << 45
-		var err float64 = 3.2
-
-		ct0 := Element{
-			Message: NewFloat(msg),
-			Noise:   []*big.Float{NewFloat(err), NewFloat(err)},
-		}
-
-		ct1 := Element{
-			Message: NewFloat(msg),
-			Noise:   []*big.Float{NewFloat(err), NewFloat(err)},
-		}
+		ct0 := NewCiphertextPK(NewPlaintext(ptStd, 1/12.0, level))
+		ct1 := NewCiphertextPK(NewPlaintext(ptStd, 1/12.0, level))
 
 		ct2 := est.Add(ct0, ct1)
 
@@ -184,18 +109,8 @@ func TestEstimator(t *testing.T) {
 
 	t.Run("Mul/Pt/Pt", func(t *testing.T) {
 
-		var msg float64 = 1 << 45
-		var err float64 = 3.2
-
-		pt0 := Element{
-			Message: NewFloat(msg),
-			Noise:   []*big.Float{NewFloat(err)},
-		}
-
-		pt1 := Element{
-			Message: NewFloat(msg),
-			Noise:   []*big.Float{NewFloat(err)},
-		}
+		pt0 := NewPlaintext(ptStd, 1/12.0, level)
+		pt1 := NewPlaintext(ptStd, 1/12.0, level)
 
 		pt2 := est.Mul(pt0, pt1)
 
@@ -215,97 +130,12 @@ func TestEstimator(t *testing.T) {
 		require.InDelta(t, want, have, delta)
 	})
 
-	t.Run("Mul/Ct/Ct", func(t *testing.T) {
-
-		// EMPIRICALLY VERIFIED
-
-		var msg float64 = 1 << 45
-		var err float64 = 3.2
-
-		ct0 := Element{
-			Level:   4,
-			Message: NewFloat(msg),
-			Noise:   []*big.Float{NewFloat(err), NewFloat(err)},
-		}
-
-		ct1 := Element{
-			Level:   4,
-			Message: NewFloat(msg),
-			Noise:   []*big.Float{NewFloat(err), NewFloat(err)},
-		}
-
-		ct2 := est.Mul(ct0, ct1)
-
-		// This shouldn't affect the noise in a noticeable way because
-		// it adds a rounding error and the ciphertext
-		// message (and noise) is scaled roughtly by
-		// the scaling factor from the multiplication.
-		ct2 = est.Relinearize(ct2)
-
-		tmp := MulSTD(est.N, ct0.Message, ct1.Message)
-
-		have, _ := ct2.Message.Float64()
-		want, _ := tmp.Float64()
-
-		tmp0 := MulSTD(est.N, ct0.Message, ct1.Noise[0])
-		tmp0 = AddSTD(tmp0, MulSTD(est.N, ct1.Message, ct0.Noise[0]))
-		tmp0 = AddSTD(tmp0, MulSTD(est.N, ct0.Noise[0], ct0.Noise[1]))
-
-		tmp1 := MulSTD(est.N, ct0.Message, ct1.Noise[1])
-		tmp1 = AddSTD(tmp1, MulSTD(est.N, ct0.Noise[0], ct1.Noise[1]))
-		tmp1 = AddSTD(tmp1, MulSTD(est.N, ct1.Message, ct0.Noise[1]))
-		tmp1 = AddSTD(tmp1, MulSTD(est.N, ct1.Noise[0], ct0.Noise[1]))
-
-		tmp2 := MulSTD(est.N, ct0.Noise[1], ct1.Noise[1])
-
-		tmp = MulSTD(est.N, tmp2, stdSk)
-		tmp = AddSTD(tmp, tmp1)
-		tmp = MulSTD(est.N, tmp, stdSk)
-		tmp = AddSTD(tmp, tmp0)
-
-		have = est.Std(ct2)
-
-		want, _ = tmp.Float64()
-		want = math.Log2(want)
-
-		require.InDelta(t, want, have, delta)
-	})
-
-	t.Run("Rescale", func(t *testing.T) {
-
-		// EMPIRICALLY VERIFIED
-
-		level := 1
-
-		var msg float64 = 1 << 45
-		var err float64 = 1 << 46
-		var q = float64(Q[level])
-
-		elem := Element{
-			Level:   level,
-			Message: NewFloat(msg),
-			Noise:   []*big.Float{NewFloat(err), NewFloat(err), NewFloat(err)},
-		}
-
-		elem = est.Rescale(elem)
-
-		have := est.Std(elem)
-		want := math.Log2(math.Sqrt((err/q*err/q + 1/12.0) + ((err/q*err/q+1/12.0)+(err/q*err/q+1/12.0)*float64(H))*float64(H)))
-
-		//require.InDelta(t, elem.Message, msg/q, delta)
-		require.Equal(t, elem.Level, level-1)
-		require.InDelta(t, want, have, delta)
-	})
-
 	t.Run("Mul/Ct/Pt", func(t *testing.T) {
 
 		// EMPIRICALLY VERIFIED
 
-		var msg float64 = 1 << 45
-		var err float64 = 3.2
-
-		pt0 := NewPlaintext(err*msg, nil, 4)
-		ct1 := NewCiphertextPK(NewPlaintext(err*msg, nil, 4))
+		pt0 := NewPlaintext(ptStd, 1/12.0, level)
+		ct1 := NewCiphertextPK(NewPlaintext(ptStd, 1/12.0, level))
 
 		ct2 := est.Mul(pt0, ct1)
 
@@ -334,11 +164,112 @@ func TestEstimator(t *testing.T) {
 		require.InDelta(t, want, have, delta)
 	})
 
+	t.Run("Mul/Ct/Ct", func(t *testing.T) {
+
+		// EMPIRICALLY VERIFIED
+		ct := NewCiphertextPK(NewPlaintext(ptStd, 0, level))
+
+		t.Log(ptStd)
+
+		t.Log(est.Std(ct), ct.Message)
+
+		for i := 0; i < level; i++{
+			ct = est.Mul(ct, NewPlaintext(ptStd, 0, level))
+			ct = est.Relinearize(ct)
+			ct = est.Rescale(ct)
+			t.Log(est.Std(ct), ct.Message)
+		}
+		
+
+	})
+
+	t.Run("Rescale", func(t *testing.T) {
+
+		// EMPIRICALLY VERIFIED
+
+		level := 1
+
+		var msg float64 = 1 << 45
+		var err float64 = 1 << 46
+		var q = float64(Q[level])
+
+		elem := Element{
+			Level:   level,
+			Message: NewFloat(msg),
+			Noise:   []*big.Float{NewFloat(err), NewFloat(err), NewFloat(err)},
+		}
+
+		elem = est.Rescale(elem)
+
+		have := est.Std(elem)
+		want := math.Log2(math.Sqrt((err/q*err/q + 1/12.0) + ((err/q*err/q+1/12.0)+(err/q*err/q+1/12.0)*float64(H))*float64(H)))
+
+		//require.InDelta(t, elem.Message, msg/q, delta)
+		require.Equal(t, elem.Level, level-1)
+		require.InDelta(t, want, have, delta)
+	})
+
+	t.Run("LinearTransform", func(t *testing.T){
+
+		// EMPIRICALLY VERIFIED (UP TO THERE) for CT-SK & CT-PK
+
+		diags := []map[int][2]float64{
+			map[int][2]float64{
+				 0: {0.00390626732046525, 0},
+				 1: {0.00365389161348000, 0},
+				 2: {0.00338292536788323, 0},
+				 3: {0.00308802841010419, 0},
+				 4: {0.00276214866848703, 0},
+				 5: {0.00239205905698830, 0},
+				 6: {0.00195307507231700, 0},
+				 7: {0.00138094268654370, 0},
+				-7: {0.00138107715173799, 0},
+				-6: {0.00195313989560961, 0},
+				-5: {0.00239209373419969, 0},
+				-4: {0.00276215569281487, 0},
+				-3: {0.00308818469796449, 0},
+				-2: {0.00338291628098494, 0},
+				-1: {0.00365397976622493, 0},
+			},
+				map[int][2]float64{
+				    0: {0.00024414102316630370, 0},
+				 2048: {0.00024414233423388263, 0},
+				 4096: {0.00024414206118669165, 0},
+				 6144: {0.00024414240022099044, 0}, 
+				 8192: {0.00024414248708016384, 0}, 
+				10240: {0.00024414247911935246, 0}, 
+				12288: {0.00024414180919533906, 0}, 
+				14336: {0.00024414248329247690, 0}, 
+				16384: {0.00024414246898360015, 0}, 
+				18432: {0.00024414239107164240, 0}, 
+				20480: {0.00024414226649732900, 0}, 
+				22528: {0.00024414233600733267, 0}, 
+				24576: {0.00024414232259683394, 0}, 
+				26624: {0.00024414248311350925, 0}, 
+				28672: {0.00024414158296428044, 0}, 
+				30720: {0.00024414248708458494, 0},
+			},
+		}
+
+		level := 4
+
+		LT := NewLinearTransform(diags[0], Q[level], level, LogN-1, 2)
+
+		ct := NewCiphertextSK(NewPlaintext(ptStd, nil, level))
+
+		t.Log(est.Std(ct))
+
+		ct = est.LinearTransform(ct, LT)
+
+		t.Log(est.Std(ct))
+
+	})
+
 	t.Run("KeySwitchHoisted", func(t *testing.T){
 
 		// EMPIRICALLY VERIFIED FOR CT-SK & CT-PK
 
-		ct := NewCiphertextPK(NewPlaintext(nil, nil, 4))
+		ct := NewCiphertextPK(NewPlaintext(nil, nil, level))
 
 		ct = est.KeySwitchLazy(ct)
 

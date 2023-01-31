@@ -1,10 +1,11 @@
 package main
 
-import(
+import (
 	"fmt"
+
+	"github.com/tuneinsight/ckks-bootstrapping-precision/estimator"
 	"github.com/tuneinsight/lattigo/v4/ckks"
 	"github.com/tuneinsight/lattigo/v4/ckks/advanced"
-	"github.com/tuneinsight/ckks-bootstrapping-precision/estimator"
 )
 
 var (
@@ -16,7 +17,7 @@ var (
 	LtType   = advanced.SlotsToCoeffs //advanced.CoeffsToSlots //
 )
 
-func main(){
+func main() {
 	var err error
 
 	LogQ := make([]int, Depth+1)
@@ -44,18 +45,17 @@ func main(){
 
 	LTs := GetSlotsToCoeffsSTD(params, ckks.NewEncoder(params))
 
-	ct := estimator.NewCiphertextPK(estimator.NewPlaintext(0.5772058896878792 * params.DefaultScale().Float64(), nil, params.MaxLevel()))
-	
+	ct := estimator.NewCiphertextPK(estimator.NewPlaintext(0.5772058896878792*params.DefaultScale().Float64(), nil, params.MaxLevel()))
+
 	switch LtType {
 	case advanced.SlotsToCoeffs:
 		// Repack imaginary
-		if params.LogSlots() == params.LogN()-1{
+		if params.LogSlots() == params.LogN()-1 {
 			ct = est.Add(ct, ct)
 		}
 	}
-	
 
-	for i := range LTs{
+	for i := range LTs {
 		ct = est.LinearTransform(ct, LTs[i])
 		fmt.Println(est.Std(ct))
 		ct = est.Rescale(ct)
@@ -63,25 +63,23 @@ func main(){
 		fmt.Println()
 	}
 
-
-
-	switch LtType{
+	switch LtType {
 	case advanced.CoeffsToSlots:
 
 		ctConj := est.KeySwitch(ct)
 
 		ct = est.Add(ctConj, ct)
 
-		if params.LogSlots() < params.LogN()-1{
+		if params.LogSlots() < params.LogN()-1 {
 			ct = est.Add(ct, est.KeySwitch(ct))
 		}
 	}
-	
+
 	fmt.Println(ct.Message)
 	fmt.Println(est.Std(ct))
 }
 
-func GetSlotsToCoeffsSTD(params ckks.Parameters, ecd ckks.Encoder) (LTs []estimator.LinearTransform){
+func GetSlotsToCoeffsSTD(params ckks.Parameters, ecd ckks.Encoder) (LTs []estimator.LinearTransform) {
 
 	Levels := make([]int, params.MaxLevel())
 	for i := range Levels {
@@ -104,18 +102,18 @@ func GetSlotsToCoeffsSTD(params ckks.Parameters, ecd ckks.Encoder) (LTs []estima
 
 	values := make([]float64, params.N())
 
-	for i, matrix := range encodingMatrices{
+	for i, matrix := range encodingMatrices {
 
 		m := make(map[int]float64)
 
-		for j, diag := range matrix{
+		for j, diag := range matrix {
 
 			EncodePlaintext(ecd, params.N(), params.LogSlots(), diag, values)
 
 			m[j] = estimator.STD(values)
 		}
 
-		Level := encodingMatrixLiteral.LevelStart-i
+		Level := encodingMatrixLiteral.LevelStart - i
 
 		LTs[i] = estimator.NewLinearTransform(m, params.Q()[Level], Level, params.LogSlots(), encodingMatrixLiteral.LogBSGSRatio)
 	}
@@ -123,13 +121,13 @@ func GetSlotsToCoeffsSTD(params ckks.Parameters, ecd ckks.Encoder) (LTs []estima
 	return
 }
 
-func EncodePlaintext(ecd ckks.Encoder, N, LogSlots int, a []complex128, b []float64){
+func EncodePlaintext(ecd ckks.Encoder, N, LogSlots int, a []complex128, b []float64) {
 
 	ecd.IFFT(a, LogSlots)
 
-	slots := 1<<LogSlots
-	gap := N/(2*slots)
-	for i, j := 0, N>>1; i < slots; i, j = i+gap, j+gap{
+	slots := 1 << LogSlots
+	gap := N / (2 * slots)
+	for i, j := 0, N>>1; i < slots; i, j = i+gap, j+gap {
 		b[i] = real(a[i])
 		b[j] = imag(a[i])
 	}

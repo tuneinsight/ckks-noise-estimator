@@ -1,20 +1,21 @@
 package operations
 
-import(
-	"os"
-	"fmt"
+import (
 	"encoding/csv"
+	"fmt"
+	"os"
 	"time"
-	"github.com/tuneinsight/lattigo/v4/rlwe"
-	"github.com/tuneinsight/lattigo/v4/ckks"
+
 	"github.com/tuneinsight/ckks-bootstrapping-precision/stats"
+	"github.com/tuneinsight/lattigo/v4/ckks"
+	"github.com/tuneinsight/lattigo/v4/rlwe"
 )
 
 // GetNoisRescale
 //
 // sqrt(1/12 + N/12 * var(h)) = sqrt(1/12 + N/12 * h/N) = 1/12 + h/12 = (h+1)/12
 //
-func GetNoisRescale(LogN, LogScale int, std float64, nbRuns int){
+func GetNoisRescale(LogN, LogScale int, std float64, nbRuns int) {
 
 	f, err := os.Create(fmt.Sprintf("data/rescale_%d_%d_%f_%d_%d.csv", LogN, LogScale, std, nbRuns, time.Now().Unix()))
 	if err != nil {
@@ -46,7 +47,7 @@ func GetNoisRescale(LogN, LogScale int, std float64, nbRuns int){
 		ct := ckks.NewCiphertext(params, 1, params.MaxLevel())
 
 		for i := 0; i < nbRuns; i++ {
-			
+
 			c.GenKeys()
 
 			ecd := c.ecd

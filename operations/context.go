@@ -1,23 +1,24 @@
 package operations
 
-import(
+import (
 	"math/rand"
 	"time"
+
+	"github.com/tuneinsight/ckks-bootstrapping-precision/stats"
 	"github.com/tuneinsight/lattigo/v4/ckks"
 	"github.com/tuneinsight/lattigo/v4/rlwe"
-	"github.com/tuneinsight/ckks-bootstrapping-precision/stats"
 )
 
-type Context struct{
+type Context struct {
 	params ckks.Parameters
-	kgen rlwe.KeyGenerator
-	enc rlwe.Encryptor
-	dec rlwe.Decryptor
-	ecd ckks.Encoder
-	eval ckks.Evaluator
-	std float64
-	sk *rlwe.SecretKey
-	pk *rlwe.PublicKey
+	kgen   rlwe.KeyGenerator
+	enc    rlwe.Encryptor
+	dec    rlwe.Decryptor
+	ecd    ckks.Encoder
+	eval   ckks.Evaluator
+	std    float64
+	sk     *rlwe.SecretKey
+	pk     *rlwe.PublicKey
 	stats  *stats.PrecisionStats // Precision stats
 }
 
@@ -28,8 +29,8 @@ func NewContext(LogN, H, LogScale int) (c *Context) {
 	var params ckks.Parameters
 	if params, err = ckks.NewParametersFromLiteral(ckks.ParametersLiteral{
 		LogN:     LogN,
-		LogQ:        []int{60, 45, 45, 45, 45},
-		LogP:        []int{61, 61},
+		LogQ:     []int{60, 45, 45, 45, 45},
+		LogP:     []int{61, 61},
 		H:        H,
 		LogSlots: LogN - 1,
 		LogScale: LogScale,
@@ -76,12 +77,12 @@ func (c *Context) NewPlaintextVector(std float64, values []float64, pt *rlwe.Pla
 	r := rand.New(rand.NewSource(t))
 
 	var v float64
-	for i := range values{
+	for i := range values {
 
-		v = r.NormFloat64() 
+		v = r.NormFloat64()
 
 		for v > 6.0 {
-			v = r.NormFloat64() 
+			v = r.NormFloat64()
 		}
 
 		values[i] = v * std

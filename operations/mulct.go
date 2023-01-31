@@ -1,16 +1,17 @@
 package operations
 
-import(
-	"os"
-	"fmt"
+import (
 	"encoding/csv"
+	"fmt"
+	"os"
 	"time"
+
+	"github.com/tuneinsight/ckks-bootstrapping-precision/stats"
 	"github.com/tuneinsight/lattigo/v4/ckks"
 	"github.com/tuneinsight/lattigo/v4/rlwe"
-	"github.com/tuneinsight/ckks-bootstrapping-precision/stats"
 )
 
-func GetNoiseMulCt(LogN, LogScale int, std float64, nbRuns int){
+func GetNoiseMulCt(LogN, LogScale int, std float64, nbRuns int) {
 
 	f, err := os.Create(fmt.Sprintf("data/mulct_%d_%d_%f_%d_%d.csv", LogN, LogScale, std, nbRuns, time.Now().Unix()))
 	if err != nil {
@@ -47,7 +48,7 @@ func GetNoiseMulCt(LogN, LogScale int, std float64, nbRuns int){
 		ct3 := ckks.NewCiphertext(params, 2, params.MaxLevel())
 
 		for i := 0; i < nbRuns; i++ {
-			
+
 			c.GenKeys()
 
 			ecd := c.ecd
@@ -61,7 +62,7 @@ func GetNoiseMulCt(LogN, LogScale int, std float64, nbRuns int){
 
 			// Encrypt first plaintext
 			enc.Encrypt(pt1, ct1)
-			
+
 			// Second plaintext
 			pt2.Scale = rlwe.NewScale(params.Q()[pt2.Level()])
 			c.NewPlaintextVector(std, values, pt2)

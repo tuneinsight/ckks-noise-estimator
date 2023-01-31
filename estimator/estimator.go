@@ -145,7 +145,7 @@ func (e *Estimator) Mul(el0 Element, el1 interface{}) (el2 Element) {
 
 		el2.Noise = make([]*big.Float, el0.Degree()+1)
 
-		for i := 0; i < el0.Degree()+1; i++{
+		for i := 0; i < el0.Degree()+1; i++ {
 			el2.Noise[i] = new(big.Float).Mul(el0.Noise[i], scale)
 		}
 	}
@@ -153,17 +153,17 @@ func (e *Estimator) Mul(el0 Element, el1 interface{}) (el2 Element) {
 	return
 }
 
-func (e *Estimator) KeySwitch(el0 Element) (el1 Element){
+func (e *Estimator) KeySwitch(el0 Element) (el1 Element) {
 	return e.ModDown(e.KeySwitchLazy(el0))
 }
 
 // KeySwitchLazy returns P * el0 + ks(el0)
-func (e *Estimator) KeySwitchLazy(el0 Element) (el1 Element){
+func (e *Estimator) KeySwitchLazy(el0 Element) (el1 Element) {
 
 	el1 = e.Mul(el0, e.P)
 
 	tmp := Element{
-		Level: el0.Level,
+		Level:   el0.Level,
 		Message: NewFloat(0),
 		Noise: []*big.Float{
 			e.KeySwitchRawLazy(el0.Level, el0.Noise[1], NoiseFresh, e.H),
@@ -187,7 +187,7 @@ func (e *Estimator) Relinearize(el0 Element) (el1 Element) {
 	for i := 2; i < el0.Degree()+1; i++ {
 
 		tmp := e.ModDown(Element{
-			Level: el0.Level,
+			Level:   el0.Level,
 			Message: NewFloat(0),
 			Noise: []*big.Float{
 				e.KeySwitchRawLazy(el0.Level, el0.Noise[i], NoiseFresh, e.H),
@@ -200,8 +200,6 @@ func (e *Estimator) Relinearize(el0 Element) (el1 Element) {
 
 	return
 }
-
-
 
 // KeySwitchRawLazy: raw output of the key-switching dot-product
 // without the division by P. Thus only the error is due to multiplication
@@ -221,7 +219,7 @@ func (e *Estimator) KeySwitchRawLazy(level int, eCt, eKey, H *big.Float) (eKeySw
 	// P * eCt * H
 	eKeySwitch = MulSTD(e.N, eCt, stdSk)
 	eKeySwitch.Mul(eKeySwitch, e.P)
-	
+
 	oneTwelveSqrt := NewFloat(12)
 	oneTwelveSqrt.Sqrt(oneTwelveSqrt)
 

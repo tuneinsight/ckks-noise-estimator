@@ -1,19 +1,20 @@
 package operations
 
-import(
-	"os"
+import (
+	"encoding/csv"
 	"fmt"
 	"math"
 	"math/big"
-	"encoding/csv"
+	"os"
 	"time"
-	"github.com/tuneinsight/lattigo/v4/ckks"
-	"github.com/tuneinsight/lattigo/v4/rlwe"
-	"github.com/tuneinsight/lattigo/v4/ring"
+
 	"github.com/tuneinsight/ckks-bootstrapping-precision/stats"
+	"github.com/tuneinsight/lattigo/v4/ckks"
+	"github.com/tuneinsight/lattigo/v4/ring"
+	"github.com/tuneinsight/lattigo/v4/rlwe"
 )
 
-func KeySwitchHoisted(LogN, H int, nbRuns int){
+func KeySwitchHoisted(LogN, H int, nbRuns int) {
 
 	f, err := os.Create(fmt.Sprintf("data/keyswitchhoisted_%d_%d_%d.csv", LogN, nbRuns, time.Now().Unix()))
 	if err != nil {
@@ -44,12 +45,12 @@ func KeySwitchHoisted(LogN, H int, nbRuns int){
 	ct := ckks.NewCiphertext(params, 1, params.MaxLevel())
 
 	coeffsBig := make([]*big.Int, params.N())
-	for i := range coeffsBig{
+	for i := range coeffsBig {
 		coeffsBig[i] = new(big.Int)
 	}
 
 	for i := 0; i < nbRuns; i++ {
-		
+
 		c.GenKeys()
 
 		rtks := c.kgen.GenRotationKeysForRotations([]int{k}, false, c.sk)
@@ -63,7 +64,7 @@ func KeySwitchHoisted(LogN, H int, nbRuns int){
 
 		// Enc(pt1) x pt2
 
-		eval = eval.WithKey(rlwe.EvaluationKey{Rtks:rtks})
+		eval = eval.WithKey(rlwe.EvaluationKey{Rtks: rtks})
 
 		buffQP := eval.GetRLWEEvaluator().BuffDecompQP
 		eval.GetRLWEEvaluator().DecomposeNTT(ct.Level(), params.MaxLevelP(), params.PCount(), ct.Value[1], ct.IsNTT, buffQP)
@@ -71,8 +72,8 @@ func KeySwitchHoisted(LogN, H int, nbRuns int){
 		ctRots := eval.RotateHoistedLazyNew(ct.Level(), []int{k}, ct.Value[0], buffQP)
 
 		ct2 := &rlwe.Ciphertext{
-			Value: []*ring.Poly{ctRots[k].Value[0].Q, ctRots[k].Value[1].Q},
-			MetaData:ct.MetaData,
+			Value:    []*ring.Poly{ctRots[k].Value[0].Q, ctRots[k].Value[1].Q},
+			MetaData: ct.MetaData,
 		}
 
 		// Dec(Enc(pt1) x pt2)
@@ -82,7 +83,7 @@ func KeySwitchHoisted(LogN, H int, nbRuns int){
 		params.RingQ().PolyToBigintCentered(pt.Value, 1, coeffsBig)
 
 		values := make([]float64, params.N())
-		for i := range values{
+		for i := range values {
 			values[i], _ = new(big.Float).SetPrec(128).SetInt(coeffsBig[i]).Float64()
 		}
 
@@ -99,12 +100,11 @@ func KeySwitchHoisted(LogN, H int, nbRuns int){
 	w.Flush()
 }
 
-
-func STD(values []*big.Int) (std float64){
+func STD(values []*big.Int) (std float64) {
 
 	mean := new(big.Float).SetPrec(128)
 
-	for i := range values{
+	for i := range values {
 		mean.Add(mean, new(big.Float).SetInt(values[i]))
 	}
 
@@ -114,10 +114,10 @@ func STD(values []*big.Int) (std float64){
 
 	variance := new(big.Float).SetPrec(128)
 
-	for i := range values{
+	for i := range values {
 		tmp := new(big.Float).SetInt(values[i])
 		tmp.Sub(tmp, mean)
-		tmp.Mul(tmp,tmp)
+		tmp.Mul(tmp, tmp)
 		variance.Add(variance, tmp)
 	}
 

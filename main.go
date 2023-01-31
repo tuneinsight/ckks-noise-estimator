@@ -1,12 +1,12 @@
 package main
 
-
-import(
+import (
 	"fmt"
+
 	"github.com/tuneinsight/ckks-bootstrapping-precision/estimator"
 )
 
-func main(){
+func main() {
 
 	N := 65536
 	H := 32768
@@ -16,8 +16,8 @@ func main(){
 
 	e := estimator.NewEstimator(N, H, Q, P)
 
-	msg0 := 3.2 * (1<<45)
-	msg1 := 3.2 * (1<<45)
+	msg0 := 3.2 * (1 << 45)
+	msg1 := 3.2 * (1 << 45)
 
 	pt := estimator.NewCiphertextPk(estimator.NewPlaintext(msg0, nil, 4))
 	ct := estimator.NewCiphertextPk(estimator.NewPlaintext(msg1, nil, 4))

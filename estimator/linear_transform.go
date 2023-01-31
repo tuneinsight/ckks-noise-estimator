@@ -1,22 +1,22 @@
 package estimator
 
-import(
+import (
 	"math/big"
 )
 
-type LinearTransform struct{
-	N1 int
-	Level int
+type LinearTransform struct {
+	N1         int
+	Level      int
 	Diagonales map[int]Element
-	Index map[int][]int
+	Index      map[int][]int
 }
 
 // NewLinearTransform
 //
 // diags: map of non-zero diagonales, with [std plaintext, std encoding error]
-func NewLinearTransform(diags map[int][2]float64, scale interface{}, Level, LogSlots, LogBSGSRatio int) (LT LinearTransform){
+func NewLinearTransform(diags map[int][2]float64, scale interface{}, Level, LogSlots, LogBSGSRatio int) (LT LinearTransform) {
 
-	slots := 1<<LogSlots
+	slots := 1 << LogSlots
 
 	N1 := FindBestBSGSRatio(diags, slots, LogBSGSRatio)
 
@@ -35,13 +35,13 @@ func NewLinearTransform(diags map[int][2]float64, scale interface{}, Level, LogS
 		}
 	}
 
-	return LinearTransform{N1:N1, Level:Level, Diagonales:Diagonales, Index:Index}
+	return LinearTransform{N1: N1, Level: Level, Diagonales: Diagonales, Index: Index}
 }
 
-func (e *Estimator) LinearTransform(el0 Element, LT LinearTransform) (el1 Element){
+func (e *Estimator) LinearTransform(el0 Element, LT LinearTransform) (el1 Element) {
 
 	Level := MinInt(el0.Level, LT.Level)
-	
+
 	// Accumulator outer-loop
 	el1 = Element{}
 	el1.Level = Level
@@ -66,24 +66,24 @@ func (e *Estimator) LinearTransform(el0 Element, LT LinearTransform) (el1 Elemen
 
 		for _, i := range index[j] {
 
-			if i == 0{
+			if i == 0 {
 				tmp = e.Add(tmp, e.Mul(el0P, LT.Diagonales[j])) // el0 * P * diag[j]
-			}else{
+			} else {
 				tmp = e.Add(tmp, e.Mul(el0RotHoisted, LT.Diagonales[i+j])) // Rotate(el0) * P * diag[i+j]
 			}
 		}
 
-		if j != 0{
+		if j != 0 {
 			// Rotate n2 of sum(P * Rotate(el0) * diags) / P
 			el1 = e.Add(el1, e.KeySwitchLazy(e.ModDown(tmp)))
-		}else{
+		} else {
 			el1 = e.Add(el1, tmp)
 		}
 	}
 
 	el1 = e.ModDown(el1)
 
-	return 
+	return
 }
 
 // FindBestBSGSRatio finds the best N1*N2 = N for the baby-step giant-step algorithm for matrix multiplication.

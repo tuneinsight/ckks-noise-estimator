@@ -13,13 +13,13 @@ var Header = []string{
 
 // PrecisionStats is a struct storing statistic about the precision of a CKKS plaintext
 type PrecisionStats struct {
-	MaxDelta                           float64
-	MinPrecision                       float64
-	MeanDelta                          float64
-	MeanPrecision                      float64
-	StdPrecision                       float64
+	MaxDelta      float64
+	MinPrecision  float64
+	MeanDelta     float64
+	MeanPrecision float64
+	StdPrecision  float64
 
-	diff     []float64
+	diff []float64
 	prec []float64
 }
 
@@ -28,7 +28,7 @@ func NewPrecisionStats() (prec *PrecisionStats) {
 		MaxDelta:  0,
 		MeanDelta: 0,
 
-		diff:     []float64{},
+		diff: []float64{},
 		prec: []float64{},
 	}
 }

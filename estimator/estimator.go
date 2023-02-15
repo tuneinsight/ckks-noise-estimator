@@ -41,15 +41,16 @@ func (e *Estimator) Std(el0 Element) (stdf64 float64) {
 
 	std := new(big.Float).Mul(el0.Noise[0], el0.Noise[0])
 
-	sk := new(big.Float).Set(e.H)
+	sk := new(big.Float).Set(e.H) // N * H/N
 
 	var tmp = new(big.Float)
 
+	// sum(ei^{2} * H^{i})
 	for i := 1; i < el0.Degree()+1; i++ {
 		tmp.Mul(el0.Noise[i], el0.Noise[i])
 		tmp.Mul(sk, tmp)
-		std.Add(std, tmp)
-		sk.Mul(sk, e.H)
+		std.Add(std, tmp) // res = res + ei^2 * H^{i}
+		sk.Mul(sk, e.H) // H^{i}
 	}
 
 	std.Sqrt(std)
@@ -160,7 +161,18 @@ func (e *Estimator) KeySwitch(el0 Element) (el1 Element) {
 // KeySwitchLazy returns P * el0 + ks(el0)
 func (e *Estimator) KeySwitchLazy(el0 Element) (el1 Element) {
 
-	el1 = e.Mul(el0, e.P)
+	if el0.Degree() != 1{
+		panic("KeySwitch is only supported for elements of degree 1")
+	}
+
+	el1 = Element{
+		Level:el0.Level,
+		Message: new(big.Float).Mul(el0.Message, e.P),
+		Noise:[]*big.Float{
+			new(big.Float).Mul(el0.Noise[0], e.P),
+			NewFloat(0),
+		},
+	}
 
 	tmp := Element{
 		Level:   el0.Level,
@@ -176,6 +188,10 @@ func (e *Estimator) KeySwitchLazy(el0 Element) (el1 Element) {
 
 func (e *Estimator) Relinearize(el0 Element) (el1 Element) {
 
+	if el0.Degree() > 2{
+		panic("Relinearization is only supported for degree 2 ciphertexts")
+	}
+
 	el1 = Element{}
 	el1.Level = el0.Level
 	el1.Message = new(big.Float).Set(el0.Message)
@@ -184,19 +200,16 @@ func (e *Estimator) Relinearize(el0 Element) (el1 Element) {
 		new(big.Float).Set(el0.Noise[1]),
 	}
 
-	for i := 2; i < el0.Degree()+1; i++ {
+	tmp := e.ModDown(Element{
+		Level:   el0.Level,
+		Message: NewFloat(0),
+		Noise: []*big.Float{
+			e.KeySwitchRawLazy(el0.Level, el0.Noise[2], NoiseFresh, new(big.Float).Mul(e.H, e.H)),
+			NewFloat(0),
+		},
+	})
 
-		tmp := e.ModDown(Element{
-			Level:   el0.Level,
-			Message: NewFloat(0),
-			Noise: []*big.Float{
-				e.KeySwitchRawLazy(el0.Level, el0.Noise[i], NoiseFresh, e.H),
-				NewFloat(0),
-			},
-		})
-
-		el1 = e.Add(el1, tmp)
-	}
+	el1 = e.Add(el1, tmp)
 
 	return
 }
@@ -207,17 +220,15 @@ func (e *Estimator) Relinearize(el0 Element) (el1 Element) {
 // Additional error due to the multiplication with the encrypted key with the error
 // in the term given to the key-switch.
 //
-// Noise: sqrt(N * (var(noise_base) * var(H) * P + var(noise_key) * sum(var(q_alpha_i)))
+// Noise: sqrt(N * (var(noise_base) * var(SK) * P + var(noise_key) * sum(var(q_alpha_i)))
 //
 //
-func (e *Estimator) KeySwitchRawLazy(level int, eCt, eKey, H *big.Float) (eKeySwitch *big.Float) {
+func (e *Estimator) KeySwitchRawLazy(level int, eCt, eKey, varSKTimesN *big.Float) (eKeySwitch *big.Float) {
 
-	stdSk := new(big.Float).Set(H)
-	stdSk.Sqrt(stdSk)
-	stdSk.Quo(stdSk, e.N)
-
-	// P * eCt * H
-	eKeySwitch = MulSTD(e.N, eCt, stdSk)
+	// P * eCt * var(SK) * N
+	eKeySwitch = new(big.Float).Mul(eCt, eCt)
+	eKeySwitch.Mul(eKeySwitch, varSKTimesN)
+	eKeySwitch.Sqrt(eKeySwitch)
 	eKeySwitch.Mul(eKeySwitch, e.P)
 
 	oneTwelveSqrt := NewFloat(12)

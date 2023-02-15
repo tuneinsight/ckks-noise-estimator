@@ -30,10 +30,6 @@ func NewPlaintext(msg, noise interface{}, level int) Element {
 		Noise = NewFloat(noise)
 	}
 
-	oneTwelve := NewFloat(1)
-	oneTwelve.Quo(oneTwelve, NewFloat(12))
-	oneTwelve.Sqrt(oneTwelve)
-
 	return Element{
 		Level:   level,
 		Message: Message,

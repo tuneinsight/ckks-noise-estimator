@@ -5,7 +5,7 @@ import (
 )
 
 var LogN = 16
-var H = 32
+var H = 32768
 var LogScale = 45
 var PlaintextSTD = 0.5772058896878792
 var Runs = 16
@@ -14,7 +14,8 @@ func main() {
 	//operations.GetNoisRescale(LogN, LogScale, PlaintextSTD, Runs)
 	//operations.GetNoiseMulPt(LogN, LogScale, PlaintextSTD, Runs)
 	//operations.GetNoiseMulCt(LogN, LogScale, PlaintextSTD, Runs)
-
+	operations.KeySwitchHoisted(LogN, H, Runs)
+	
 	diags := []map[int]float64{
 		map[int]float64{
 			0:     0.00024414102316630370,
@@ -52,8 +53,16 @@ func main() {
 			-1: 0.00365397976622493,
 		},
 	}
+	_=diags
 
-	operations.GetNoiseLinearTransform(LogN, H, LogScale, diags[1], PlaintextSTD, Runs)
+	ddd := map[int]float64{}
 
-	//operations.KeySwitchHoisted(LogN, H, Runs)
+	for i := 0; i < 1024; i++{
+		ddd[i] = 0.02209306164843668
+	}
+
+	operations.GetNoiseLinearTransform(LogN, H, LogScale, ddd, PlaintextSTD, Runs)
+	
+	
+	
 }

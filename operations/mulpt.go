@@ -1,32 +1,15 @@
 package operations
 
 import (
-	"encoding/csv"
 	"fmt"
-	"os"
-	"time"
+	"math"
 
-	"github.com/tuneinsight/ckks-bootstrapping-precision/stats"
 	"github.com/tuneinsight/lattigo/v4/ckks"
 	"github.com/tuneinsight/lattigo/v4/rlwe"
+	"github.com/tuneinsight/ckks-bootstrapping-precision/estimator"
 )
 
 func GetNoiseMulPt(LogN, LogScale int, std float64, nbRuns int) {
-
-	f, err := os.Create(fmt.Sprintf("data/mulpt_%d_%d_%f_%d_%d.csv", LogN, LogScale, std, nbRuns, time.Now().Unix()))
-	if err != nil {
-		panic(err)
-	}
-	defer f.Close()
-
-	w := csv.NewWriter(f)
-
-	// CSV Header
-	if err := w.Write(stats.Header); err != nil {
-		panic(err)
-	}
-
-	w.Flush()
 
 	fmt.Printf("Noise Plaintext Multiplication\n")
 
@@ -45,11 +28,12 @@ func GetNoiseMulPt(LogN, LogScale int, std float64, nbRuns int) {
 
 		ct := ckks.NewCiphertext(params, 1, params.MaxLevel())
 
+		est := estimator.NewEstimator(params.N(), params.HammingWeight(), params.Q(), params.P())
+
 		for i := 0; i < nbRuns; i++ {
 
 			c.GenKeys()
 
-			ecd := c.ecd
 			enc := c.enc
 			dec := c.dec
 			eval := c.eval
@@ -80,16 +64,12 @@ func GetNoiseMulPt(LogN, LogScale int, std float64, nbRuns int) {
 
 			params.RingQ().Sub(pt1.Value, pt2.Value, pt1.Value)
 
-			// Compares in the ring
-			c.stats.Update(ecd.DecodeCoeffs(pt1))
+			estCT := estimator.NewCiphertextPK(estimator.NewPlaintext(std * params.DefaultScale().Float64(), 1/12.0, params.MaxLevel()))
+			estPT := estimator.NewPlaintext(std * rlwe.NewScale(params.Q()[pt2.Level()]).Float64(), 1/12.0, params.MaxLevel())
+			estCT = est.Mul(estCT, estPT)
+
+			fmt.Println(math.Log2(STDPoly(params.RingQ(), pt1.Value, 1, false)), est.Std(estCT))
 		}
-
-		c.Finalize()
-
-		if err := w.Write(c.ToCSV()); err != nil {
-			panic(err)
-		}
-
-		w.Flush()
+		fmt.Println()
 	}
 }

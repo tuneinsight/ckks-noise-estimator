@@ -1,35 +1,17 @@
 package operations
 
 import (
-	"encoding/csv"
 	"fmt"
 	"math"
 	"math/big"
-	"os"
-	"time"
 
-	"github.com/tuneinsight/ckks-bootstrapping-precision/stats"
+	"github.com/tuneinsight/ckks-bootstrapping-precision/estimator"
 	"github.com/tuneinsight/lattigo/v4/ckks"
-	"github.com/tuneinsight/lattigo/v4/ring"
+	//"github.com/tuneinsight/lattigo/v4/ring"
 	"github.com/tuneinsight/lattigo/v4/rlwe"
 )
 
 func KeySwitchHoisted(LogN, H int, nbRuns int) {
-
-	f, err := os.Create(fmt.Sprintf("data/keyswitchhoisted_%d_%d_%d.csv", LogN, nbRuns, time.Now().Unix()))
-	if err != nil {
-		panic(err)
-	}
-	defer f.Close()
-
-	w := csv.NewWriter(f)
-
-	// CSV Header
-	if err := w.Write(stats.Header); err != nil {
-		panic(err)
-	}
-
-	w.Flush()
 
 	fmt.Printf("Noise KeySwitchHoisted\n")
 
@@ -49,6 +31,8 @@ func KeySwitchHoisted(LogN, H int, nbRuns int) {
 		coeffsBig[i] = new(big.Int)
 	}
 
+	est := estimator.NewEstimator(params.N(), params.HammingWeight(), params.Q(), params.P())
+
 	for i := 0; i < nbRuns; i++ {
 
 		c.GenKeys()
@@ -66,38 +50,28 @@ func KeySwitchHoisted(LogN, H int, nbRuns int) {
 
 		eval = eval.WithKey(rlwe.EvaluationKey{Rtks: rtks})
 
-		buffQP := eval.GetRLWEEvaluator().BuffDecompQP
-		eval.GetRLWEEvaluator().DecomposeNTT(ct.Level(), params.MaxLevelP(), params.PCount(), ct.Value[1], ct.IsNTT, buffQP)
+		//buffQP := eval.GetRLWEEvaluator().BuffDecompQP
+		//eval.GetRLWEEvaluator().DecomposeNTT(ct.Level(), params.MaxLevelP(), params.PCount(), ct.Value[1], ct.IsNTT, buffQP)
 
-		ctRots := eval.RotateHoistedLazyNew(ct.Level(), []int{k}, ct.Value[0], buffQP)
+		//ctRots := eval.RotateHoistedLazyNew(ct.Level(), []int{k}, ct.Value[0], buffQP)
 
-		ct2 := &rlwe.Ciphertext{
-			Value:    []*ring.Poly{ctRots[k].Value[0].Q, ctRots[k].Value[1].Q},
-			MetaData: ct.MetaData,
-		}
+		//ct2 := &rlwe.Ciphertext{
+		//	Value:    []*ring.Poly{ctRots[k].Value[0].Q, ctRots[k].Value[1].Q},
+		//	MetaData: ct.MetaData,
+		//}
 
+		ctRots := eval.RotateNew(ct, k)
+
+		
 		// Dec(Enc(pt1) x pt2)
-		dec.Decrypt(ct2, pt)
+		dec.Decrypt(ctRots, pt)
 
-		params.RingQ().INTT(pt.Value, pt.Value)
-		params.RingQ().PolyToBigintCentered(pt.Value, 1, coeffsBig)
+		estCT := estimator.NewCiphertextPK(estimator.NewPlaintext(0, 0, c.params.MaxLevel()))
 
-		values := make([]float64, params.N())
-		for i := range values {
-			values[i], _ = new(big.Float).SetPrec(128).SetInt(coeffsBig[i]).Float64()
-		}
+		estCT = est.KeySwitch(estCT)
 
-		// Compares in the ring
-		c.stats.Update(values)
+		fmt.Println(math.Log2(STDPoly(params.RingQ().AtLevel(pt.Level()), pt.Value, 1, false)), est.Std(estCT))
 	}
-
-	c.Finalize()
-
-	if err := w.Write(c.ToCSV()); err != nil {
-		panic(err)
-	}
-
-	w.Flush()
 }
 
 func STD(values []*big.Int) (std float64) {

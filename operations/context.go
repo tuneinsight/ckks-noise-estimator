@@ -47,7 +47,7 @@ func NewContext(LogN, H, LogScale int) (c *Context) {
 		ecd:    ecd,
 		kgen:   kgen,
 		eval:   eval,
-		stats:  stats.NewPrecisionStats(H),
+		stats:  stats.NewPrecisionStats(),
 	}
 }
 

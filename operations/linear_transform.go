@@ -1,16 +1,13 @@
 package operations
 
 import (
-	"encoding/csv"
 	"fmt"
 	"math"
 	"math/big"
 	"math/rand"
-	"os"
 	"time"
 
 	"github.com/tuneinsight/ckks-bootstrapping-precision/estimator"
-	"github.com/tuneinsight/ckks-bootstrapping-precision/stats"
 	"github.com/tuneinsight/lattigo/v4/ckks"
 	"github.com/tuneinsight/lattigo/v4/ring"
 	"github.com/tuneinsight/lattigo/v4/rlwe"
@@ -19,22 +16,7 @@ import (
 
 func GetNoiseLinearTransform(LogN, H, LogScale int, nonZeroDiags map[int]float64, std float64, nbRuns int) {
 
-	f, err := os.Create(fmt.Sprintf("data/linear_transform_%d_%d_%d_%f_%d_%d.csv", LogN, H, LogScale, std, nbRuns, time.Now().Unix()))
-	if err != nil {
-		panic(err)
-	}
-	defer f.Close()
-
-	w := csv.NewWriter(f)
-
-	// CSV Header
-	if err := w.Write(stats.Header); err != nil {
-		panic(err)
-	}
-
-	w.Flush()
-
-	fmt.Printf("Noise LinearTransform\n")
+	Log2BSGSRatio := 2
 
 	correction := math.Sqrt(float64(int(1 << (LogN - 1))))
 
@@ -49,6 +31,8 @@ func GetNoiseLinearTransform(LogN, H, LogScale int, nonZeroDiags map[int]float64
 		diags[i] = make([]complex128, params.Slots())
 	}
 
+	est := estimator.NewEstimator(params.N(), params.HammingWeight(), params.Q(), params.P())
+
 	for i := 0; i < nbRuns; i++ {
 
 		c.GenKeys()
@@ -61,13 +45,13 @@ func GetNoiseLinearTransform(LogN, H, LogScale int, nonZeroDiags map[int]float64
 		dec := c.dec
 
 		for i, diag := range diags {
-			std := nonZeroDiags[i] * correction
+			std := nonZeroDiags[i] * correction 
 			for j := range diags[i] {
 				diag[j] = NormComplex(r, std)
 			}
 		}
 
-		LT := ckks.GenLinearTransformBSGS(ecd, diags, params.MaxLevel(), rlwe.NewScale(params.Q()[params.MaxLevel()]), 2, params.LogSlots())
+		LT := ckks.GenLinearTransformBSGS(ecd, diags, params.MaxLevel(), rlwe.NewScale(params.Q()[params.MaxLevel()]), Log2BSGSRatio, params.LogSlots())
 
 		rots := LT.Rotations()
 
@@ -77,28 +61,40 @@ func GetNoiseLinearTransform(LogN, H, LogScale int, nonZeroDiags map[int]float64
 
 		values := make([]complex128, params.Slots())
 		for i := range values {
-			values[i] = NormComplex(r, std*correction)
+			values[i] = NormComplex(r, std)
 		}
 
 		pt := ecd.EncodeNew(values, params.MaxLevel(), params.DefaultScale(), params.LogSlots())
 
-		ct := enc.EncryptNew(pt)
+		// Get the standard deviation of the plaintext in the ring
+		stdPT := STDPoly(params.RingQ().AtLevel(pt.Level()), pt.Value, 1, false)
 
+		// Encrypt and evaluate the linear transform
+		ct := enc.EncryptNew(pt)
 		eval.LinearTransform(ct, LT, []*rlwe.Ciphertext{ct})
 
-		ct2 := rlwe.NewCiphertextAtLevelFromPoly(ct.Level(), ct.Value)
-		ct2.MetaData = ct.MetaData
+		// Subtract the linear transform in the clear
+		pt.Scale = ct.Scale
+		ecd.Encode(EvaluateLinearTransform(values, diags, Log2BSGSRatio), pt, params.LogSlots())
+		eval.Sub(ct, pt, ct)
 
-		//eval.Rescale(ct2, params.DefaultScale(), ct2)
+		// Decrypt and log STD
+		dec.Decrypt(ct, pt)
 
-		want := EvaluateLinearTransform(values, diags, 2)
+		// Extract each diagonal standard deviation of the LT
+		estDiags := make(map[int][2]float64)
+		for diag, vec := range LT.Vec{
+			estDiags[diag] = [2]float64{
+				STDPoly(params.RingQ(), vec.Q, 1, true),
+				math.Sqrt(1/12.0),
+			}
+		}
 
-		pt.Scale = ct2.Scale
-		ecd.Encode(want, pt, params.LogSlots())
-		eval.Sub(ct2, pt, ct2)
-
-		dec.Decrypt(ct2, pt)
-		fmt.Println(STDPoly(params.RingQ().AtLevel(pt.Level()), pt.Value, 1, false))
+		// Evaluate
+		estLT := estimator.NewLinearTransform(estDiags, 1, params.MaxLevel(), params.LogSlots(), Log2BSGSRatio)
+		estCT := estimator.NewCiphertextSK(estimator.NewPlaintext(stdPT, math.Sqrt(1/12.0), params.MaxLevel()))
+		estCT = est.LinearTransform(estCT, estLT)
+		fmt.Println(math.Log2(STDPoly(params.RingQ().AtLevel(pt.Level()), pt.Value, 1, false)), est.Std(estCT))
 	}
 }
 
@@ -115,19 +111,31 @@ func STDPoly(r *ring.Ring, poly *ring.Poly, scale float64, montgomery bool) (std
 	r.PolyToBigintCentered(tmp, 1, coeffsBig)
 	values := make([]float64, r.N())
 	for i := range coeffsBig {
-		values[i] = float64(coeffsBig[i].Int64()) / scale
+		values[i], _ = new(big.Float).SetInt(coeffsBig[i]).Float64()
+		values[i] /= scale
 	}
-	return math.Log2(estimator.STD(values))
+	return estimator.STD(values)
+}
+
+func NormFloat(r *rand.Rand, std float64) (f float64) {
+
+	f = r.NormFloat64() * std
+
+	if f > 6*std{
+		f = r.NormFloat64() * std
+	}
+
+	return 
 }
 
 func NormComplex(r *rand.Rand, std float64) complex128 {
 	real := r.NormFloat64()
-	for real > 6.0 {
+	for real > 6.0*std {
 		real = r.NormFloat64()
 	}
 
 	imag := r.NormFloat64()
-	for imag > 6.0 {
+	for imag > 6.0*std {
 		imag = r.NormFloat64()
 	}
 

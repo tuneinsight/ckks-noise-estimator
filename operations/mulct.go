@@ -11,7 +11,7 @@ import (
 	"github.com/tuneinsight/lattigo/v4/rlwe"
 )
 
-func GetNoiseMulCt(LogN, LogScale int, std float64, nbRuns int) {
+func GetNoiseMulCt(LogN, LogSlots, LogScale int, std float64, nbRuns int) {
 
 	f, err := os.Create(fmt.Sprintf("data/mulct_%d_%d_%f_%d_%d.csv", LogN, LogScale, std, nbRuns, time.Now().Unix()))
 	if err != nil {
@@ -58,14 +58,14 @@ func GetNoiseMulCt(LogN, LogScale int, std float64, nbRuns int) {
 
 			// First plaintext
 			pt1.Scale = params.DefaultScale()
-			c.NewPlaintextVector(std, values, pt1)
+			c.NewPlaintextVector(std, LogSlots, values, pt1)
 
 			// Encrypt first plaintext
 			enc.Encrypt(pt1, ct1)
 
 			// Second plaintext
 			pt2.Scale = rlwe.NewScale(params.Q()[pt2.Level()])
-			c.NewPlaintextVector(std, values, pt2)
+			c.NewPlaintextVector(std, LogSlots, values, pt2)
 
 			enc.Encrypt(pt2, ct2)
 

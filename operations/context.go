@@ -1,6 +1,7 @@
 package operations
 
 import (
+	"math"
 	"math/rand"
 	"time"
 
@@ -32,7 +33,6 @@ func NewContext(LogN, H, LogScale int) (c *Context) {
 		LogQ:     []int{60, 45, 45, 45, 45},
 		LogP:     []int{61, 61},
 		H:        H,
-		LogSlots: LogN - 1,
 		LogScale: LogScale,
 	}); err != nil {
 		panic(err)
@@ -69,15 +69,21 @@ func (c *Context) ToCSV() []string {
 	return c.stats.ToCSV()
 }
 
-func (c *Context) NewPlaintextVector(std float64, values []float64, pt *rlwe.Plaintext) {
+func (c *Context) NewPlaintextVector(std float64, logSlots int, values []float64, pt *rlwe.Plaintext) (stdPt float64) {
 
 	ecd := c.ecd
 
 	t := time.Now().UnixMilli()
 	r := rand.New(rand.NewSource(t))
 
+	gap := c.params.MaxSlots() / (1<<logSlots)
+
+	for i := range values{
+		values[i] = 0
+	}
+
 	var v float64
-	for i := range values {
+	for i := 0; i < len(values); i+= gap{
 
 		v = r.NormFloat64()
 
@@ -90,5 +96,23 @@ func (c *Context) NewPlaintextVector(std float64, values []float64, pt *rlwe.Pla
 
 	ecd.EncodeCoeffs(values, pt)
 
-	return
+	return standarddeviation(values)
+}
+
+
+func standarddeviation(values []float64) (std float64){
+	var mean float64
+	for i := range values{
+		mean += values[i]
+	}
+	mean /= float64(len(values))
+
+	for i := range values{
+		tmp := values[i]-mean
+		std += tmp*tmp
+	}
+
+	std /= float64(len(values)-1)
+
+	return math.Sqrt(std)
 }

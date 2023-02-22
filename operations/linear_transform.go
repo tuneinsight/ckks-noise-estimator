@@ -14,7 +14,7 @@ import (
 	"github.com/tuneinsight/lattigo/v4/utils"
 )
 
-func GetNoiseLinearTransform(LogN, H, LogScale int, nonZeroDiags map[int]float64, std float64, nbRuns int) {
+func GetNoiseLinearTransform(LogN, H, LogSlots, LogScale int, nonZeroDiags map[int]float64, std float64, nbRuns int) {
 
 	Log2BSGSRatio := 2
 
@@ -28,7 +28,7 @@ func GetNoiseLinearTransform(LogN, H, LogScale int, nonZeroDiags map[int]float64
 
 	diags := make(map[int][]complex128)
 	for i := range nonZeroDiags {
-		diags[i] = make([]complex128, params.Slots())
+		diags[i] = make([]complex128, 1<<LogSlots)
 	}
 
 	est := estimator.NewEstimator(params.N(), params.HammingWeight(), params.Q(), params.P())
@@ -51,7 +51,7 @@ func GetNoiseLinearTransform(LogN, H, LogScale int, nonZeroDiags map[int]float64
 			}
 		}
 
-		LT := ckks.GenLinearTransformBSGS(ecd, diags, params.MaxLevel(), rlwe.NewScale(params.Q()[params.MaxLevel()]), Log2BSGSRatio, params.LogSlots())
+		LT := ckks.GenLinearTransformBSGS(ecd, diags, params.MaxLevel(), rlwe.NewScale(params.Q()[params.MaxLevel()]), Log2BSGSRatio, LogSlots)
 
 		rots := LT.Rotations()
 
@@ -59,12 +59,12 @@ func GetNoiseLinearTransform(LogN, H, LogScale int, nonZeroDiags map[int]float64
 
 		eval := c.eval.WithKey(rlwe.EvaluationKey{Rtks: rotKey})
 
-		values := make([]complex128, params.Slots())
+		values := make([]complex128, 1<<LogSlots)
 		for i := range values {
 			values[i] = NormComplex(r, std)
 		}
 
-		pt := ecd.EncodeNew(values, params.MaxLevel(), params.DefaultScale(), params.LogSlots())
+		pt := ecd.EncodeNew(values, params.MaxLevel(), params.DefaultScale(), LogSlots)
 
 		// Get the standard deviation of the plaintext in the ring
 		stdPT := STDPoly(params.RingQ().AtLevel(pt.Level()), pt.Value, 1, false)
@@ -75,7 +75,7 @@ func GetNoiseLinearTransform(LogN, H, LogScale int, nonZeroDiags map[int]float64
 
 		// Subtract the linear transform in the clear
 		pt.Scale = ct.Scale
-		ecd.Encode(EvaluateLinearTransform(values, diags, Log2BSGSRatio), pt, params.LogSlots())
+		ecd.Encode(EvaluateLinearTransform(values, diags, Log2BSGSRatio), pt, LogSlots)
 		eval.Sub(ct, pt, ct)
 
 		// Decrypt and log STD
@@ -91,7 +91,7 @@ func GetNoiseLinearTransform(LogN, H, LogScale int, nonZeroDiags map[int]float64
 		}
 
 		// Evaluate
-		estLT := estimator.NewLinearTransform(estDiags, 1, params.MaxLevel(), params.LogSlots(), Log2BSGSRatio)
+		estLT := estimator.NewLinearTransform(estDiags, 1, params.MaxLevel(), LogSlots, Log2BSGSRatio)
 		estCT := estimator.NewCiphertextSK(estimator.NewPlaintext(stdPT, math.Sqrt(1/12.0), params.MaxLevel()))
 		estCT = est.LinearTransform(estCT, estLT)
 		fmt.Println(math.Log2(STDPoly(params.RingQ().AtLevel(pt.Level()), pt.Value, 1, false)), est.Std(estCT))

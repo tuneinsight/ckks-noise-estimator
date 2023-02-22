@@ -9,11 +9,11 @@ import (
 	"github.com/tuneinsight/ckks-bootstrapping-precision/estimator"
 )
 
-func GetNoiseMulPt(LogN, LogScale int, std float64, nbRuns int) {
+func GetNoiseMulPt(LogN, LogSlots, LogScale int, std float64, nbRuns int) {
 
 	fmt.Printf("Noise Plaintext Multiplication\n")
 
-	for H := 32; H <= 32768; H <<= 1 {
+	for H := 32768; H <= 32768; H <<= 1 {
 
 		fmt.Printf("H:%d\n", H)
 
@@ -40,14 +40,14 @@ func GetNoiseMulPt(LogN, LogScale int, std float64, nbRuns int) {
 
 			// First plaintext
 			pt1.Scale = params.DefaultScale()
-			c.NewPlaintextVector(std, values, pt1)
+			stdpt1 := c.NewPlaintextVector(std, LogSlots, values, pt1)
 
 			// Encrypt first plaintext
 			enc.Encrypt(pt1, ct)
 
 			// Second plaintext
 			pt2.Scale = rlwe.NewScale(params.Q()[pt2.Level()])
-			c.NewPlaintextVector(std, values, pt2)
+			stdpt2 := c.NewPlaintextVector(std, LogSlots, values, pt2)
 
 			// Enc(pt1) x pt2
 			eval.Mul(ct, pt2, ct)
@@ -64,8 +64,8 @@ func GetNoiseMulPt(LogN, LogScale int, std float64, nbRuns int) {
 
 			params.RingQ().Sub(pt1.Value, pt2.Value, pt1.Value)
 
-			estCT := estimator.NewCiphertextPK(estimator.NewPlaintext(std * params.DefaultScale().Float64(), 1/12.0, params.MaxLevel()))
-			estPT := estimator.NewPlaintext(std * rlwe.NewScale(params.Q()[pt2.Level()]).Float64(), 1/12.0, params.MaxLevel())
+			estCT := estimator.NewCiphertextSK(estimator.NewPlaintext(stdpt1 * params.DefaultScale().Float64(), 1/12.0, params.MaxLevel()))
+			estPT := estimator.NewPlaintext(stdpt2 * rlwe.NewScale(params.Q()[pt2.Level()]).Float64(), 1/12.0, params.MaxLevel())
 			estCT = est.Mul(estCT, estPT)
 
 			fmt.Println(math.Log2(STDPoly(params.RingQ(), pt1.Value, 1, false)), est.Std(estCT))

@@ -20,13 +20,13 @@ var (
 	LogN     = 16   // Log2 ring degree
 	LogSlots = 15   // Log2 #slots
 	LogScale = 45   // Log2 scaling factor
-	H        = 32768    // Hamming weight of the secret
+	H        = 0    // Hamming weight of the secret
 	KeyType  = "pk" // "pk"
 
 	// Homomorphic Encoding/Decoding Parameters:
 	LtType       = advanced.SlotsToCoeffs //advanced.CoeffsToSlots //
 	LogBSGSRatio = 2                      // Ratio N2/N1
-	Depth        = LogSlots
+	Depth        = 10
 
 	// Others
 	NbRuns = 1    // Number of recorded events
@@ -245,7 +245,7 @@ func (c *Context) ComputeStats() (stdMsg, stdErr float64) {
 	gap := params.N() / (2 * params.Slots())
 
 	values := make([]float64, params.N())
-	for i := 0; i < params.N(); i += gap {
+	for i := 0; i < params.N(); i += 32 {
 		values[i] = utils.RandFloat64(-1, 1)
 	}
 
@@ -263,35 +263,65 @@ func (c *Context) ComputeStats() (stdMsg, stdErr float64) {
 
 	ct := enc.EncryptNew(pt)
 
-	DFT(eval, ct, c.encodingMatrix.Matrices)
+	nbMatrices := len(c.encodingMatrix.Matrices)
 
+	DFT(eval, ct, c.encodingMatrix.Matrices[:nbMatrices])
+
+	// =============== Plaintext circuit =============== 
 	vCmplx := make([]complex128, params.Slots())
 
 	for i, idx, jdx := 0, 0, params.N()>>1; i < params.Slots(); i, idx, jdx = i+1, idx+gap, jdx+gap {
 		vCmplx[i] = complex(values[idx], values[jdx])
 	}
 
-	if c.encodingMatrixLiteral.LinearTransformType == advanced.CoeffsToSlots {
-		ckks.SliceBitReverseInPlaceComplex128(vCmplx, len(vCmplx))
-		ecd.IFFT(vCmplx, params.LogSlots())
-	} else {
-		ecd.FFT(vCmplx, params.LogSlots())
-		ckks.SliceBitReverseInPlaceComplex128(vCmplx, len(vCmplx))
+	ckks.SliceBitReverseInPlaceComplex128(vCmplx, len(vCmplx))
+
+	ptMatrices := c.encodingMatrixLiteral.ComputeDFTMatrices()
+
+	
+	for i := range ptMatrices[:nbMatrices]{
+		vCmplx = EvaluateLinearTransform(vCmplx, ptMatrices[i], c.encodingMatrix.LogBSGSRatio)
 	}
+
+	ckks.SliceBitReverseInPlaceComplex128(vCmplx, len(vCmplx))
 
 	for i, idx, jdx := 0, 0, params.N()>>1; i < params.Slots(); i, idx, jdx = i+1, idx+gap, jdx+gap {
 		values[idx], values[jdx] = real(vCmplx[i]), imag(vCmplx[i])
 	}
+
+	// ================================================= 
+
+	/*
+	have := values
+	want := ecd.DecodeCoeffs(dec.DecryptNew(ct))
+
+	havegap := make([]float64, 2*params.Slots())
+
+	for i := 0; i < 2*params.Slots(); i++{
+		havegap[i] = have[i*gap] - want[i*gap]
+	}
+
+	fmt.Println(havegap)
+	*/
 
 	ecd.EncodeCoeffs(values, pt)
 	eval.Sub(ct, pt, ct)
 	ct.Scale = rlwe.NewScale(1)
 	diff := ecd.DecodeCoeffs(dec.DecryptNew(ct))
 
+	/*
+	for i := 0; i < 2*params.Slots(); i++{
+		diff[i] = diff[i*gap]
+	}
+
+	diff = diff[:2*params.Slots()]
+	*/
+
 	c.stats.Update(diff)
 
 	return
 }
+
 
 func DFT(eval ckks.Evaluator, ct *rlwe.Ciphertext, plainVectors []ckks.LinearTransform) {
 	scale := ct.Scale
@@ -311,4 +341,47 @@ func (c *Context) Finalize() {
 // Produces a CSV friendly string.
 func (c *Context) ToCSV() []string {
 	return c.stats.ToCSV()
+}
+
+
+func EvaluateLinearTransform(values []complex128, diags map[int][]complex128, LogBSGSRatio int) (res []complex128) {
+
+	slots := len(values)
+
+	N1 := ckks.FindBestBSGSRatio(diags, len(values), LogBSGSRatio)
+
+	index, _, _ := ckks.BSGSIndex(diags, slots, N1)
+
+	res = make([]complex128, slots)
+
+	for j := range index {
+
+		rot := -j & (slots - 1)
+
+		tmp := make([]complex128, slots)
+
+		for _, i := range index[j] {
+
+			v, ok := diags[j+i]
+			if !ok {
+				v = diags[j+i-slots]
+			}
+
+			a := utils.RotateComplex128Slice(values, i)
+
+			b := utils.RotateComplex128Slice(v, rot)
+
+			for i := 0; i < slots; i++ {
+				tmp[i] += a[i] * b[i]
+			}
+		}
+
+		tmp = utils.RotateComplex128Slice(tmp, j)
+
+		for i := 0; i < slots; i++ {
+			res[i] += tmp[i]
+		}
+	}
+
+	return
 }

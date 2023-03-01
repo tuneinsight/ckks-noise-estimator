@@ -6,6 +6,7 @@ import (
 	"os"
 	"runtime"
 	"time"
+	"math/rand"
 
 	"github.com/tuneinsight/ckks-bootstrapping-precision/estimator"
 	"github.com/tuneinsight/ckks-bootstrapping-precision/stats"
@@ -26,11 +27,11 @@ var (
 	// Homomorphic Encoding/Decoding Parameters:
 	LtType       = advanced.SlotsToCoeffs //advanced.CoeffsToSlots //
 	LogBSGSRatio = 2                      // Ratio N2/N1
-	Depth        = 10
+	Depth        = LogSlots
 
 	// Others
 	NbRuns = 1    // Number of recorded events
-	Record = true // Record in CSV
+	Record = false // Record in CSV
 )
 
 func main() {
@@ -81,12 +82,14 @@ func main() {
 
 	scale := c.params.DefaultScale().Float64()
 
+	nbMatrices := Depth
+
 	var stdEstimated float64
 	for i := 0; i < NbRuns; i++ {
 		// Generate a new set of keys
 		// Evaluates the linear transform
 		// Records the precision stats
-		stdMsg, stdErr := c.ComputeStats()
+		stdMsg, stdErr := c.ComputeStats(nbMatrices)
 
 		fmt.Println(stdMsg, stdErr)
 
@@ -100,10 +103,9 @@ func main() {
 			ct = estimator.NewCiphertextPK(pt)
 		}
 
-		ec := c.encodingMatrixLiteral
-		//ec.LogSlots++
+		LTs := estimator.GetEncodingMatrixSTD(c.params, c.ecd, c.encodingMatrixLiteral)
 
-		stdEstimated += est.Std(est.DFT(ct, c.params, c.ecd, ec))
+		stdEstimated += est.Std(est.DFT(ct, LTs[:nbMatrices]))
 
 		runtime.GC()
 	}
@@ -172,6 +174,8 @@ func NewContext(H, depth, logSlots int, ltType advanced.LinearTransformType) (c 
 		panic(err)
 	}
 
+
+
 	kgen := ckks.NewKeyGenerator(params)
 	ecd := ckks.NewEncoder(params)
 
@@ -232,7 +236,7 @@ func (c *Context) GenKeys() {
 }
 
 // ComputeStats generates a new set of keys, evaluates the linear transform and records the precision stats.
-func (c *Context) ComputeStats() (stdMsg, stdErr float64) {
+func (c *Context) ComputeStats(nbMatrices int) (stdMsg, stdErr float64) {
 
 	c.GenKeys() // Generates a new set of keys for each event
 
@@ -244,9 +248,11 @@ func (c *Context) ComputeStats() (stdMsg, stdErr float64) {
 
 	gap := params.N() / (2 * params.Slots())
 
+	r := rand.New(rand.NewSource(0))
+
 	values := make([]float64, params.N())
-	for i := 0; i < params.N(); i += 32 {
-		values[i] = utils.RandFloat64(-1, 1)
+	for i := 0; i < params.N(); i += gap {
+		values[i] = 2*(r.Float64()-0.5)
 	}
 
 	stdMsg = estimator.STD(values)
@@ -263,59 +269,37 @@ func (c *Context) ComputeStats() (stdMsg, stdErr float64) {
 
 	ct := enc.EncryptNew(pt)
 
-	nbMatrices := len(c.encodingMatrix.Matrices)
+	
 
 	DFT(eval, ct, c.encodingMatrix.Matrices[:nbMatrices])
 
 	// =============== Plaintext circuit =============== 
-	vCmplx := make([]complex128, params.Slots())
 
+	// R^{2N} -> C^{N}
+	vCmplx := make([]complex128, params.Slots())
 	for i, idx, jdx := 0, 0, params.N()>>1; i < params.Slots(); i, idx, jdx = i+1, idx+gap, jdx+gap {
 		vCmplx[i] = complex(values[idx], values[jdx])
 	}
+	ecd.FFT(vCmplx, params.LogSlots())
 
-	ckks.SliceBitReverseInPlaceComplex128(vCmplx, len(vCmplx))
-
+	// DFT: C^{N} -> C^{N}
 	ptMatrices := c.encodingMatrixLiteral.ComputeDFTMatrices()
-
-	
 	for i := range ptMatrices[:nbMatrices]{
 		vCmplx = EvaluateLinearTransform(vCmplx, ptMatrices[i], c.encodingMatrix.LogBSGSRatio)
 	}
 
-	ckks.SliceBitReverseInPlaceComplex128(vCmplx, len(vCmplx))
-
+	// C^{N} -> R^{2N}
+	ecd.IFFT(vCmplx, params.LogSlots())
 	for i, idx, jdx := 0, 0, params.N()>>1; i < params.Slots(); i, idx, jdx = i+1, idx+gap, jdx+gap {
 		values[idx], values[jdx] = real(vCmplx[i]), imag(vCmplx[i])
 	}
 
 	// ================================================= 
 
-	/*
-	have := values
-	want := ecd.DecodeCoeffs(dec.DecryptNew(ct))
-
-	havegap := make([]float64, 2*params.Slots())
-
-	for i := 0; i < 2*params.Slots(); i++{
-		havegap[i] = have[i*gap] - want[i*gap]
-	}
-
-	fmt.Println(havegap)
-	*/
-
 	ecd.EncodeCoeffs(values, pt)
 	eval.Sub(ct, pt, ct)
 	ct.Scale = rlwe.NewScale(1)
 	diff := ecd.DecodeCoeffs(dec.DecryptNew(ct))
-
-	/*
-	for i := 0; i < 2*params.Slots(); i++{
-		diff[i] = diff[i*gap]
-	}
-
-	diff = diff[:2*params.Slots()]
-	*/
 
 	c.stats.Update(diff)
 

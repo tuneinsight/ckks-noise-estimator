@@ -18,7 +18,7 @@ func GetNoiseLinearTransform(LogN, H, LogSlots, LogScale int, nonZeroDiags map[i
 
 	Log2BSGSRatio := 2
 
-	correction := math.Sqrt(float64(int(1 << (LogN - 1))))
+	//correction := math.Sqrt(float64(int(1 << (LogN - 1))))
 
 	fmt.Printf("H:%d\n", H)
 
@@ -45,9 +45,19 @@ func GetNoiseLinearTransform(LogN, H, LogSlots, LogScale int, nonZeroDiags map[i
 		dec := c.dec
 
 		for i, diag := range diags {
-			std := nonZeroDiags[i] * correction 
+			//std := nonZeroDiags[i] * correction 
 			for j := range diags[i] {
-				diag[j] = NormComplex(r, std)
+
+				/*
+				real := 2*(r.Float64()-0.5)
+				imag := math.Sqrt(1-real*real)
+
+				if r.Float64() >= 0.5{
+					imag = -imag
+				}
+				*/
+
+				diag[j] = complex(2*(r.Float64()-0.5), 2*(r.Float64()-0.5)) / 32.0
 			}
 		}
 

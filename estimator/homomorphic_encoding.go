@@ -31,9 +31,7 @@ func (e *Estimator) HomomorphicEncoding(ct Element, params ckks.Parameters, ecd 
 	return ct
 }
 
-func (e *Estimator) DFT(ct Element, params ckks.Parameters, ecd ckks.Encoder, encodingMatrixLiteral advanced.EncodingMatrixLiteral) Element {
-
-	LTs := GetEncodingMatrixSTD(params, ecd, encodingMatrixLiteral)
+func (e *Estimator) DFT(ct Element, LTs []LinearTransform) Element {
 
 	// DFT
 	for i := range LTs {

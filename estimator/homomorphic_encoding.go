@@ -2,15 +2,16 @@ package estimator
 
 import (
 	"github.com/tuneinsight/lattigo/v4/ckks"
+	"github.com/tuneinsight/lattigo/v4/rlwe"
 	"github.com/tuneinsight/lattigo/v4/ckks/advanced"
 )
 
-func (e *Estimator) HomomorphicEncoding(ct Element, params ckks.Parameters, ecd ckks.Encoder, encodingMatrixLiteral advanced.EncodingMatrixLiteral) Element {
+func (e *Estimator) HomomorphicEncoding(ct Element, params ckks.Parameters, ecd *ckks.Encoder, encodingMatrixLiteral advanced.HomomorphicDFTMatrixLiteral) Element {
 
 	LTs := GetEncodingMatrixSTD(params, ecd, encodingMatrixLiteral)
 
 	// Real/Imag packing
-	if encodingMatrixLiteral.LinearTransformType == advanced.SlotsToCoeffs && params.LogSlots() == params.LogN()-1 {
+	if encodingMatrixLiteral.Type == advanced.Decode && encodingMatrixLiteral.LogSlots == params.LogN()-1 {
 		ct = e.Add(ct, ct)
 	}
 
@@ -21,9 +22,9 @@ func (e *Estimator) HomomorphicEncoding(ct Element, params ckks.Parameters, ecd 
 	}
 
 	// Real/Imag extraction
-	if encodingMatrixLiteral.LinearTransformType == advanced.CoeffsToSlots {
+	if encodingMatrixLiteral.Type == advanced.Decode {
 		ct = e.Add(ct, e.KeySwitch(ct)) // Extract real/imag part
-		if params.LogSlots() < params.LogN()-1 {
+		if encodingMatrixLiteral.LogSlots < params.LogN()-1 {
 			ct = e.Add(ct, e.KeySwitch(ct)) // Rotates by slots/2 and adds
 		}
 	}
@@ -42,14 +43,14 @@ func (e *Estimator) DFT(ct Element, LTs []LinearTransform) Element {
 	return ct
 }
 
-func GetEncodingMatrixSTD(params ckks.Parameters, ecd ckks.Encoder, encodingMatrixLiteral advanced.EncodingMatrixLiteral) (LTs []LinearTransform) {
+func GetEncodingMatrixSTD(params ckks.Parameters, ecd *ckks.Encoder, encodingMatrixLiteral advanced.HomomorphicDFTMatrixLiteral) (LTs []LinearTransform) {
 
-	encodingMatrices := encodingMatrixLiteral.ComputeDFTMatrices()
+	encodingMatrices := encodingMatrixLiteral.GenMatrices(params.LogN())
 
 	LTs = make([]LinearTransform, len(encodingMatrices))
 
-	logdSlots := params.LogSlots()
-	if logdSlots < encodingMatrixLiteral.LogN-1 && encodingMatrixLiteral.RepackImag2Real {
+	logdSlots := encodingMatrixLiteral.LogSlots
+	if logdSlots < params.LogN()-1 && encodingMatrixLiteral.RepackImag2Real {
 		logdSlots++
 	}
 
@@ -59,11 +60,11 @@ func GetEncodingMatrixSTD(params ckks.Parameters, ecd ckks.Encoder, encodingMatr
 
 		for j, diag := range matrix {
 
-			if encodingMatrixLiteral.LinearTransformType == advanced.CoeffsToSlots {
+			if encodingMatrixLiteral.Type == advanced.Encode {
 				if i == len(encodingMatrices)-1 {
 					m[j] = GetSTDEncodedVector(ecd, params.N(), logdSlots, diag)
 				} else {
-					m[j] = GetSTDEncodedVector(ecd, params.N(), params.LogSlots(), diag)
+					m[j] = GetSTDEncodedVector(ecd, params.N(), encodingMatrixLiteral.LogSlots, diag)
 				}
 			} else {
 				m[j] = GetSTDEncodedVector(ecd, params.N(), logdSlots, diag)
@@ -72,13 +73,13 @@ func GetEncodingMatrixSTD(params ckks.Parameters, ecd ckks.Encoder, encodingMatr
 
 		Level := encodingMatrixLiteral.LevelStart - i
 
-		LTs[i] = NewLinearTransform(m, params.Q()[Level], Level, params.LogSlots(), encodingMatrixLiteral.LogBSGSRatio)
+		LTs[i] = NewLinearTransform(m, params.Q()[Level], Level, encodingMatrixLiteral.LogSlots, encodingMatrixLiteral.LogBSGSRatio)
 	}
 
 	return
 }
 
-func GetSTDEncodedVector(ecd ckks.Encoder, N, LogSlots int, a []complex128) [2]float64 {
+func GetSTDEncodedVector(ecd *ckks.Encoder, N, LogSlots int, a []complex128) [2]float64 {
 
 	vec := make([]complex128, 1<<LogSlots)
 
@@ -98,12 +99,14 @@ func GetSTDEncodedVector(ecd ckks.Encoder, N, LogSlots int, a []complex128) [2]f
 	params := ecd.Parameters()
 	ringQ := params.RingQ().AtLevel(0)
 	pt := ckks.NewPlaintext(params, ringQ.Level())
-	ecd.EncodeCoeffs(b, pt)
-	c := ecd.DecodeCoeffs(pt)
+	pt.EncodingDomain = rlwe.CoefficientsDomain
+	ecd.Encode(b, pt)
+	c := make([]float64, len(b))
+	ecd.Decode(pt, c)
 
 	for i := range c {
 		c[i] -= b[i]
 	}
 
-	return [2]float64{STD(b), STD(c)}
+	return [2]float64{STD(b), STD(c)} // a sqrt(2)^{degree of sparsity} seems to resolve the issue, but where does it come from o7
 }

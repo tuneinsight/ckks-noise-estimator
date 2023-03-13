@@ -91,9 +91,9 @@ func GetSTDEncodedVector(ecd *ckks.Encoder, N, LogSlots int, a []complex128) [2]
 
 	slots := 1 << LogSlots
 	gap := N / (2 * slots)
-	for i, j := 0, N>>1; i < slots; i, j = i+gap, j+gap {
-		b[i] = real(vec[i])
-		b[j] = imag(vec[i])
+	for i, j, k := 0, N>>1, 0; k < slots; i, j, k = i+gap, j+gap, k+1 {
+		b[i] = real(vec[k])
+		b[j] = imag(vec[k])
 	}
 
 	params := ecd.Parameters()

@@ -20,18 +20,18 @@ import (
 var (
 	// Scheme Parameters
 	LogN     = 16   // Log2 ring degree
-	LogSlots = 14   // Log2 #slots
+	LogSlots = 15   // Log2 #slots
 	LogScale = 45   // Log2 scaling factor
-	H        = 0    // Hamming weight of the secret
+	H        = 32768    // Hamming weight of the secret
 	KeyType  = "pk" // "pk"
 
 	// Homomorphic Encoding/Decoding Parameters:
 	LtType       = advanced.Decode //advanced.Encode //
 	LogBSGSRatio = 2               // Ratio N2/N1
-	Depth        = LogSlots
+	Depth        = 4
 
 	// Others
-	NbRuns = 1     // Number of recorded events
+	NbRuns = 8     // Number of recorded events
 	Record = false // Record in CSV
 )
 
@@ -106,7 +106,7 @@ func main() {
 
 		LTs := estimator.GetEncodingMatrixSTD(c.params, c.ecd, c.encodingMatrixLiteral)
 
-		stdEstimated += est.Std(est.DFT(ct, LTs[nbMatrices-1:nbMatrices]))
+		stdEstimated += est.Std(est.DFT(ct, LTs[:nbMatrices]))
 
 		runtime.GC()
 	}
@@ -260,7 +260,7 @@ func (c *Context) ComputeStats(nbMatrices int, LogSlots int) (stdMsg, stdErr flo
 
 	gap := params.N() / (2 * Slots)
 
-	r := rand.New(rand.NewSource(0))
+	r := rand.New(rand.NewSource(time.Now().Unix()))
 
 	values := make([]float64, params.N())
 	for i := 0; i < params.N(); i += gap {
@@ -283,7 +283,7 @@ func (c *Context) ComputeStats(nbMatrices int, LogSlots int) (stdMsg, stdErr flo
 
 	ct := enc.EncryptNew(pt)
 
-	DFT(eval, ct, c.encodingMatrix.Matrices[nbMatrices-1:nbMatrices])
+	DFT(eval, ct, c.encodingMatrix.Matrices[:nbMatrices])
 
 	// =============== Plaintext circuit ===============
 
@@ -296,7 +296,7 @@ func (c *Context) ComputeStats(nbMatrices int, LogSlots int) (stdMsg, stdErr flo
 
 	// DFT: C^{N} -> C^{N}
 	ptMatrices := c.encodingMatrixLiteral.GenMatrices(params.LogN())
-	for _, pt := range ptMatrices[nbMatrices-1:nbMatrices] {
+	for _, pt := range ptMatrices[:nbMatrices] {
 		vCmplx = EvaluateLinearTransform(vCmplx, pt, c.encodingMatrix.LogBSGSRatio)
 	}
 

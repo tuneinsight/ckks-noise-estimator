@@ -7,6 +7,7 @@ import (
 	"os"
 	"runtime"
 	"time"
+	"math/big"
 
 	"github.com/tuneinsight/ckks-bootstrapping-precision/estimator"
 	"github.com/tuneinsight/ckks-bootstrapping-precision/stats"
@@ -15,6 +16,7 @@ import (
 	"github.com/tuneinsight/lattigo/v4/ring/distribution"
 	"github.com/tuneinsight/lattigo/v4/rlwe"
 	"github.com/tuneinsight/lattigo/v4/utils"
+	"github.com/tuneinsight/lattigo/v4/utils/bignum"
 )
 
 var (
@@ -180,7 +182,7 @@ func NewContext(H, depth, logSlots int, ltType advanced.DFTType) (c *Context) {
 	}
 
 	kgen := ckks.NewKeyGenerator(params)
-	ecd := ckks.NewEncoder(params)
+	ecd := ckks.NewEncoder(params, 128)
 
 	Levels := make([]int, params.MaxLevel())
 
@@ -237,9 +239,7 @@ func (c *Context) GenKeys() {
 	evk := rlwe.NewEvaluationKeySet()
 
 	for _, galEl := range c.galEls {
-		if err := evk.Add(c.kgen.GenGaloisKeyNew(galEl, sk)); err != nil {
-			panic(err)
-		}
+		evk.GaloisKeys[galEl] = c.kgen.GenGaloisKeyNew(galEl, sk)
 	}
 
 	c.eval = c.eval.WithKey(evk)
@@ -256,15 +256,20 @@ func (c *Context) ComputeStats(nbMatrices int, LogSlots int) (stdMsg, stdErr flo
 	dec := c.dec
 	eval := c.eval
 
+	prec := params.DefaultPrecision()
+
 	Slots := 1 << LogSlots
 
 	gap := params.N() / (2 * Slots)
 
 	r := rand.New(rand.NewSource(time.Now().Unix()))
 
-	values := make([]float64, params.N())
+	values := make([]*big.Float, params.N())
+	for i := range values{
+		values[i] = new(big.Float).SetPrec(prec)
+	}
 	for i := 0; i < params.N(); i += gap {
-		values[i] = 2 * (r.Float64() - 0.5)
+		values[i] = bignum.NewFloat(2 * (r.Float64() - 0.5), prec)
 	}
 
 	stdMsg = estimator.STD(values)
@@ -272,12 +277,18 @@ func (c *Context) ComputeStats(nbMatrices int, LogSlots int) (stdMsg, stdErr flo
 	pt := ckks.NewPlaintext(params, params.MaxLevel())
 	pt.EncodingDomain = rlwe.CoefficientsDomain
 
-	ecd.Encode(values, pt)
+	if err := ecd.Encode(values, pt); err != nil{
+		panic(err)
+	}
 
-	vErr := make([]float64, params.N())
-	ecd.Decode(pt, vErr)
+	vErr := make([]*big.Float, params.N())
+
+	if err := ecd.Decode(pt, vErr); err != nil{
+		panic(err)
+	}
+
 	for i := range values {
-		vErr[i] -= values[i]
+		vErr[i].Sub(vErr[i], values[i])
 	}
 	stdErr = estimator.STD(vErr)
 
@@ -288,22 +299,33 @@ func (c *Context) ComputeStats(nbMatrices int, LogSlots int) (stdMsg, stdErr flo
 	// =============== Plaintext circuit ===============
 
 	// R^{2N} -> C^{N}
-	vCmplx := make([]complex128, Slots)
-	for i, idx, jdx := 0, 0, params.N()>>1; i < Slots; i, idx, jdx = i+1, idx+gap, jdx+gap {
-		vCmplx[i] = complex(values[idx], values[jdx])
+	vCmplx := make([]*bignum.Complex, Slots)
+	for i := range vCmplx{
+		vCmplx[i] = bignum.NewComplex().SetPrec(prec)
 	}
-	ecd.FFT(vCmplx, LogSlots)
+	for i, idx, jdx := 0, 0, params.N()>>1; i < Slots; i, idx, jdx = i+1, idx+gap, jdx+gap {
+		vCmplx[i][0].Set(values[idx])
+		vCmplx[i][1].Set(values[jdx])
+	}
+
+	if err := ecd.FFT(vCmplx, LogSlots); err != nil{
+		panic(err)
+	}
 
 	// DFT: C^{N} -> C^{N}
-	ptMatrices := c.encodingMatrixLiteral.GenMatrices(params.LogN())
+	ptMatrices := c.encodingMatrixLiteral.GenMatrices(params.LogN(), prec)
 	for _, pt := range ptMatrices[:nbMatrices] {
-		vCmplx = EvaluateLinearTransform(vCmplx, pt, c.encodingMatrix.LogBSGSRatio)
+		vCmplx = EvaluateLinearTransform(vCmplx, pt, prec, c.encodingMatrix.LogBSGSRatio)
 	}
 
 	// C^{N} -> R^{2N}
-	ecd.IFFT(vCmplx, LogSlots)
+	if err := ecd.IFFT(vCmplx, LogSlots); err != nil{
+		panic(err)
+	}
+	
 	for i, idx, jdx := 0, 0, params.N()>>1; i < Slots; i, idx, jdx = i+1, idx+gap, jdx+gap {
-		values[idx], values[jdx] = real(vCmplx[i]), imag(vCmplx[i])
+		values[idx].Set(vCmplx[i][0])
+		values[jdx].Set(vCmplx[i][1])
 	}
 
 	// =================================================
@@ -313,7 +335,14 @@ func (c *Context) ComputeStats(nbMatrices int, LogSlots int) (stdMsg, stdErr flo
 	ct.Scale = rlwe.NewScale(1)
 	ecd.Decode(dec.DecryptNew(ct), values)
 
-	c.stats.Update(values)
+	valuesF64 := make([]float64, len(values))
+
+	for i := range valuesF64{
+		f64, _ := values[i].Float64()
+		valuesF64[i] = f64
+	}
+
+	c.stats.Update(valuesF64)
 
 	return
 }
@@ -338,21 +367,30 @@ func (c *Context) ToCSV() []string {
 	return c.stats.ToCSV()
 }
 
-func EvaluateLinearTransform(values []complex128, diags map[int][]complex128, LogBSGSRatio int) (res []complex128) {
+func EvaluateLinearTransform(values []*bignum.Complex, diags map[int][]*bignum.Complex, prec uint, LogBSGSRatio int) (res []*bignum.Complex) {
 
 	slots := len(values)
 
-	N1 := ckks.FindBestBSGSRatio(diags, len(values), LogBSGSRatio)
+	N1 := rlwe.FindBestBSGSRatio(diags, len(values), LogBSGSRatio)
 
-	index, _, _ := ckks.BSGSIndex(diags, slots, N1)
+	index, _, _ := rlwe.BSGSIndex(diags, slots, N1)
 
-	res = make([]complex128, slots)
+	res = make([]*bignum.Complex, slots)
+
+	for i := range res{
+		res[i] = bignum.NewComplex().SetPrec(prec)
+	}
+
+	mul := bignum.NewComplexMultiplier()
 
 	for j := range index {
 
 		rot := -j & (slots - 1)
 
-		tmp := make([]complex128, slots)
+		tmp := make([]*bignum.Complex, slots)
+		for i := range tmp{
+			tmp[i] = bignum.NewComplex().SetPrec(prec)
+		}
 
 		for _, i := range index[j] {
 
@@ -361,19 +399,20 @@ func EvaluateLinearTransform(values []complex128, diags map[int][]complex128, Lo
 				v = diags[j+i-slots]
 			}
 
-			a := utils.RotateComplex128Slice(values, i)
-
-			b := utils.RotateComplex128Slice(v, rot)
+			a := utils.RotateSlice(values, i)
+			b := utils.RotateSlice(v, rot)
+			c := bignum.NewComplex().SetPrec(prec)
 
 			for i := 0; i < slots; i++ {
-				tmp[i] += a[i] * b[i]
+				mul.Mul(a[i], b[i], c)
+				tmp[i].Add(tmp[i], c)
 			}
 		}
 
-		tmp = utils.RotateComplex128Slice(tmp, j)
+		tmp = utils.RotateSlice(tmp, j)
 
 		for i := 0; i < slots; i++ {
-			res[i] += tmp[i]
+			res[i].Add(res[i], tmp[i])
 		}
 	}
 

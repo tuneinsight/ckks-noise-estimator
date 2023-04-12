@@ -1,9 +1,11 @@
 package estimator
 
 import (
+	"math/big"
 	"github.com/tuneinsight/lattigo/v4/ckks"
 	"github.com/tuneinsight/lattigo/v4/rlwe"
 	"github.com/tuneinsight/lattigo/v4/ckks/advanced"
+	"github.com/tuneinsight/lattigo/v4/utils/bignum"
 )
 
 func (e *Estimator) HomomorphicEncoding(ct Element, params ckks.Parameters, ecd *ckks.Encoder, encodingMatrixLiteral advanced.HomomorphicDFTMatrixLiteral) Element {
@@ -45,7 +47,7 @@ func (e *Estimator) DFT(ct Element, LTs []LinearTransform) Element {
 
 func GetEncodingMatrixSTD(params ckks.Parameters, ecd *ckks.Encoder, encodingMatrixLiteral advanced.HomomorphicDFTMatrixLiteral) (LTs []LinearTransform) {
 
-	encodingMatrices := encodingMatrixLiteral.GenMatrices(params.LogN())
+	encodingMatrices := encodingMatrixLiteral.GenMatrices(params.LogN(), params.DefaultPrecision())
 
 	LTs = make([]LinearTransform, len(encodingMatrices))
 
@@ -79,33 +81,49 @@ func GetEncodingMatrixSTD(params ckks.Parameters, ecd *ckks.Encoder, encodingMat
 	return
 }
 
-func GetSTDEncodedVector(ecd *ckks.Encoder, N, LogSlots int, a []complex128) [2]float64 {
+func GetSTDEncodedVector(ecd *ckks.Encoder, N, LogSlots int, a []*bignum.Complex) [2]float64 {
 
-	vec := make([]complex128, 1<<LogSlots)
+	prec := a[0].Prec()
 
-	copy(vec, a)
+	vec := make([]*bignum.Complex, 1<<LogSlots)
 
-	ecd.IFFT(vec, LogSlots)
+	for i := range vec{
+		vec[i] = a[i].Copy()
+	}
 
-	b := make([]float64, N)
+	if err := ecd.IFFT(vec, LogSlots); err != nil{
+		panic(err)
+	}
+
+	b := make([]*big.Float, N)
+	for i := range b{
+		b[i] = new(big.Float).SetPrec(prec)
+	}
 
 	slots := 1 << LogSlots
 	gap := N / (2 * slots)
 	for i, j, k := 0, N>>1, 0; k < slots; i, j, k = i+gap, j+gap, k+1 {
-		b[i] = real(vec[k])
-		b[j] = imag(vec[k])
+		b[i].Set(vec[k][0])
+		b[j].Set(vec[k][1])
 	}
 
 	params := ecd.Parameters()
 	ringQ := params.RingQ().AtLevel(0)
 	pt := ckks.NewPlaintext(params, ringQ.Level())
 	pt.EncodingDomain = rlwe.CoefficientsDomain
-	ecd.Encode(b, pt)
-	c := make([]float64, len(b))
-	ecd.Decode(pt, c)
+
+	if err := ecd.Encode(b, pt); err != nil{
+		panic(err)
+	}
+
+	c := make([]*big.Float, len(b))
+
+	if err := ecd.Decode(pt, c); err != nil{
+		panic(err)
+	}
 
 	for i := range c {
-		c[i] -= b[i]
+		c[i].Sub(c[i], b[i])
 	}
 
 	return [2]float64{STD(b), STD(c)} // a sqrt(2)^{degree of sparsity} seems to resolve the issue, but where does it come from o7

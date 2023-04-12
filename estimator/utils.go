@@ -4,6 +4,8 @@ import (
 	"fmt"
 	"math"
 	"math/big"
+	"github.com/tuneinsight/lattigo/v4/ckks"
+	"github.com/tuneinsight/lattigo/v4/rlwe"
 )
 
 const (
@@ -72,24 +74,6 @@ func MinInt(a, b int) (c int) {
 	return a
 }
 
-func STD(slice []float64) (std float64) {
-
-	n := float64(len(slice))
-
-	var mean float64
-	for _, c := range slice {
-		mean += c
-	}
-
-	mean /= n
-
-	var tmp float64
-	for _, c := range slice {
-		tmp = (c - mean)
-		std += tmp * tmp
-	}
-
-	std /= (n - 1)
-
-	return math.Sqrt(std)
+func STD(values interface{}) float64{
+	return ckks.StandardDeviation(values, rlwe.NewScale(1))
 }

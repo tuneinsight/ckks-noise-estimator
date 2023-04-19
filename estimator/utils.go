@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"math"
 	"math/big"
+
 	"github.com/tuneinsight/lattigo/v4/ckks"
 	"github.com/tuneinsight/lattigo/v4/rlwe"
 )
@@ -74,6 +75,6 @@ func MinInt(a, b int) (c int) {
 	return a
 }
 
-func STD(values interface{}) float64{
+func STD(values interface{}) float64 {
 	return ckks.StandardDeviation(values, rlwe.NewScale(1))
 }

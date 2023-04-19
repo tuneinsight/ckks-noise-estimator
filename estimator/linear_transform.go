@@ -32,7 +32,7 @@ func NewLinearTransform(diags map[int][2]float64, scale interface{}, Level, LogS
 				v = diags[j+i-slots]
 			}
 
-			Diagonales[j+i] = NewPlaintext(new(big.Float).Mul(NewFloat(v[0]), NewFloat(scale)), new(big.Float).Mul(NewFloat(v[1]), NewFloat(scale)), Level)	
+			Diagonales[j+i] = NewPlaintext(new(big.Float).Mul(NewFloat(v[0]), NewFloat(scale)), new(big.Float).Mul(NewFloat(v[1]), NewFloat(scale)), Level)
 		}
 	}
 
@@ -63,7 +63,7 @@ func (e *Estimator) LinearTransform(el0 Element, LT LinearTransform) (el1 Elemen
 	keys := make([]int, len(index))
 
 	var i int
-	for key := range index{
+	for key := range index {
 		keys[i] = key
 		i++
 	}

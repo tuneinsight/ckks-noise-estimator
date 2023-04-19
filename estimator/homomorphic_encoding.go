@@ -2,13 +2,16 @@ package estimator
 
 import (
 	"math/big"
+
 	"github.com/tuneinsight/lattigo/v4/ckks"
-	"github.com/tuneinsight/lattigo/v4/rlwe"
 	"github.com/tuneinsight/lattigo/v4/ckks/advanced"
+	"github.com/tuneinsight/lattigo/v4/rlwe"
 	"github.com/tuneinsight/lattigo/v4/utils/bignum"
 )
 
-func (e *Estimator) HomomorphicEncoding(ct Element, params ckks.Parameters, ecd *ckks.Encoder, encodingMatrixLiteral advanced.HomomorphicDFTMatrixLiteral) Element {
+func (e *Estimator) HomomorphicEncoding(ct Element, params ckks.Parameters, ecd *ckks.Encoder, encodingMatrixLiteral advanced.HomomorphicDFTMatrixLiteral) (Element, error) {
+
+	var err error
 
 	LTs := GetEncodingMatrixSTD(params, ecd, encodingMatrixLiteral)
 
@@ -20,7 +23,9 @@ func (e *Estimator) HomomorphicEncoding(ct Element, params ckks.Parameters, ecd 
 	// DFT
 	for i := range LTs {
 		ct = e.LinearTransform(ct, LTs[i])
-		ct = e.Rescale(ct)
+		if ct, err = e.Rescale(ct); err != nil {
+			return ct, err
+		}
 	}
 
 	// Real/Imag extraction
@@ -31,18 +36,22 @@ func (e *Estimator) HomomorphicEncoding(ct Element, params ckks.Parameters, ecd 
 		}
 	}
 
-	return ct
+	return ct, nil
 }
 
-func (e *Estimator) DFT(ct Element, LTs []LinearTransform) Element {
+func (e *Estimator) DFT(ct Element, LTs []LinearTransform) (Element, error) {
+
+	var err error
 
 	// DFT
 	for i := range LTs {
 		ct = e.LinearTransform(ct, LTs[i])
-		ct = e.Rescale(ct)
+		if ct, err = e.Rescale(ct); err != nil {
+			return ct, err
+		}
 	}
 
-	return ct
+	return ct, nil
 }
 
 func GetEncodingMatrixSTD(params ckks.Parameters, ecd *ckks.Encoder, encodingMatrixLiteral advanced.HomomorphicDFTMatrixLiteral) (LTs []LinearTransform) {
@@ -87,16 +96,16 @@ func GetSTDEncodedVector(ecd *ckks.Encoder, N, LogSlots int, a []*bignum.Complex
 
 	vec := make([]*bignum.Complex, 1<<LogSlots)
 
-	for i := range vec{
+	for i := range vec {
 		vec[i] = a[i].Copy()
 	}
 
-	if err := ecd.IFFT(vec, LogSlots); err != nil{
+	if err := ecd.IFFT(vec, LogSlots); err != nil {
 		panic(err)
 	}
 
 	b := make([]*big.Float, N)
-	for i := range b{
+	for i := range b {
 		b[i] = new(big.Float).SetPrec(prec)
 	}
 
@@ -112,13 +121,13 @@ func GetSTDEncodedVector(ecd *ckks.Encoder, N, LogSlots int, a []*bignum.Complex
 	pt := ckks.NewPlaintext(params, ringQ.Level())
 	pt.EncodingDomain = rlwe.CoefficientsDomain
 
-	if err := ecd.Encode(b, pt); err != nil{
+	if err := ecd.Encode(b, pt); err != nil {
 		panic(err)
 	}
 
 	c := make([]*big.Float, len(b))
 
-	if err := ecd.Decode(pt, c); err != nil{
+	if err := ecd.Decode(pt, c); err != nil {
 		panic(err)
 	}
 

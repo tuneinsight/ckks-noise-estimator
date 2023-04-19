@@ -6,6 +6,7 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/require"
+	"github.com/tuneinsight/lattigo/v4/utils/bignum/polynomial"
 )
 
 var delta = 1e-15 //float64 precision
@@ -173,10 +174,14 @@ func TestEstimator(t *testing.T) {
 
 		t.Log(est.Std(ct), ct.Message)
 
+		var err error
+
 		for i := 0; i < level; i++ {
 			ct = est.Mul(ct, NewPlaintext(ptStd, 0, level))
 			ct = est.Relinearize(ct)
-			ct = est.Rescale(ct)
+			if ct, err = est.Rescale(ct); err != nil {
+				t.Fatal(err)
+			}
 			t.Log(est.Std(ct), ct.Message)
 		}
 
@@ -188,20 +193,24 @@ func TestEstimator(t *testing.T) {
 
 		level := 1
 
+		var err error
+
 		var msg float64 = 1 << 45
-		var err float64 = 1 << 46
+		var e float64 = 1 << 46
 		var q = float64(Q[level])
 
 		elem := Element{
 			Level:   level,
 			Message: NewFloat(msg),
-			Noise:   []*big.Float{NewFloat(err), NewFloat(err), NewFloat(err)},
+			Noise:   []*big.Float{NewFloat(e), NewFloat(e), NewFloat(e)},
 		}
 
-		elem = est.Rescale(elem)
+		if elem, err = est.Rescale(elem); err != nil {
+			t.Fatal(err)
+		}
 
 		have := est.Std(elem)
-		want := math.Log2(math.Sqrt((err/q*err/q + 1/12.0) + ((err/q*err/q+1/12.0)+(err/q*err/q+1/12.0)*float64(H))*float64(H)))
+		want := math.Log2(math.Sqrt((e/q*e/q + 1/12.0) + ((e/q*e/q+1/12.0)+(e/q*e/q+1/12.0)*float64(H))*float64(H)))
 
 		//require.InDelta(t, elem.Message, msg/q, delta)
 		require.Equal(t, elem.Level, level-1)
@@ -276,5 +285,31 @@ func TestEstimator(t *testing.T) {
 
 		t.Log(have)
 
+	})
+
+	t.Run("PowerBasis", func(t *testing.T) {
+
+		ct := NewCiphertextPK(NewPlaintext(ptStd, 0, level))
+
+		pb := NewPowerBasis(ct, polynomial.Chebyshev)
+
+		var err error
+		for i := 2; i < 32; i <<= 1 {
+			if err = pb.GenPower(i, false, est); err != nil {
+				t.Fatal(err)
+			}
+		}
+
+		for i := 3; i < 8; i++ {
+			if err = pb.GenPower(i, true, est); err != nil {
+				t.Fatal(err)
+			}
+		}
+
+		for i := 0; i < 64; i++ {
+			if p, ok := pb.Value[i]; ok {
+				t.Log(i, est.Std(p), p.Level)
+			}
+		}
 	})
 }

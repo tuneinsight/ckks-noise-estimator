@@ -10,8 +10,22 @@ type Element struct {
 	Noise   []*big.Float
 }
 
-func (e *Element) Degree() int {
+func (e Element) Degree() int {
 	return len(e.Noise) - 1
+}
+
+func (e Element) CopyNew() Element {
+	Noise := make([]*big.Float, len(e.Noise))
+
+	for i := range Noise {
+		Noise[i] = new(big.Float).Set(e.Noise[i])
+	}
+
+	return Element{
+		Level:   e.Level,
+		Message: new(big.Float).Set(e.Message),
+		Noise:   Noise,
+	}
 }
 
 func NewPlaintext(msg, noise interface{}, level int) Element {

@@ -1,6 +1,7 @@
 package estimator
 
 import (
+	"fmt"
 	"math"
 	"math/big"
 )
@@ -50,7 +51,7 @@ func (e *Estimator) Std(el0 Element) (stdf64 float64) {
 		tmp.Mul(el0.Noise[i], el0.Noise[i])
 		tmp.Mul(sk, tmp)
 		std.Add(std, tmp) // res = res + ei^2 * H^{i}
-		sk.Mul(sk, e.H) // H^{i}
+		sk.Mul(sk, e.H)   // H^{i}
 	}
 
 	std.Sqrt(std)
@@ -161,14 +162,14 @@ func (e *Estimator) KeySwitch(el0 Element) (el1 Element) {
 // KeySwitchLazy returns P * el0 + ks(el0)
 func (e *Estimator) KeySwitchLazy(el0 Element) (el1 Element) {
 
-	if el0.Degree() != 1{
+	if el0.Degree() != 1 {
 		panic("KeySwitch is only supported for elements of degree 1")
 	}
 
 	el1 = Element{
-		Level:el0.Level,
+		Level:   el0.Level,
 		Message: new(big.Float).Mul(el0.Message, e.P),
-		Noise:[]*big.Float{
+		Noise: []*big.Float{
 			new(big.Float).Mul(el0.Noise[0], e.P),
 			NewFloat(0),
 		},
@@ -188,8 +189,12 @@ func (e *Estimator) KeySwitchLazy(el0 Element) (el1 Element) {
 
 func (e *Estimator) Relinearize(el0 Element) (el1 Element) {
 
-	if el0.Degree() > 2{
+	if el0.Degree() > 2 {
 		panic("Relinearization is only supported for degree 2 ciphertexts")
+	}
+
+	if el0.Degree() < 2 {
+		return el0.CopyNew()
 	}
 
 	el1 = Element{}
@@ -268,7 +273,12 @@ func (e *Estimator) ModDown(el0 Element) (el1 Element) {
 	return e.DivRound(el0, e.P)
 }
 
-func (e *Estimator) Rescale(el0 Element) (el1 Element) {
+func (e *Estimator) Rescale(el0 Element) (el1 Element, err error) {
+
+	if el0.Level == 0 {
+		return el0, fmt.Errorf("cannot rescale: level at zero")
+	}
+
 	el1 = e.DivRound(el0, e.Q[el0.Level])
 	el1.Level = el0.Level - 1
 	return

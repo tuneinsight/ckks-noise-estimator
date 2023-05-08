@@ -39,8 +39,8 @@ func TestEstimator(t *testing.T) {
 
 	t.Run("Add/Pt/Pt", func(t *testing.T) {
 
-		pt0 := NewPlaintext(ptStd, 1/12.0, level)
-		pt1 := NewPlaintext(ptStd, 1/12.0, level)
+		pt0 := NewPlaintext(ptStd, math.Sqrt(1/12.0), level)
+		pt1 := NewPlaintext(ptStd, math.Sqrt(1/12.0), level)
 
 		pt2 := est.Add(pt0, pt1)
 
@@ -60,8 +60,8 @@ func TestEstimator(t *testing.T) {
 
 	t.Run("Add/Ct/Pt", func(t *testing.T) {
 
-		ct0 := NewCiphertextPK(NewPlaintext(ptStd, 1/12.0, level))
-		pt1 := NewPlaintext(ptStd, 1/12.0, level)
+		ct0 := NewCiphertextPK(NewPlaintext(ptStd, math.Sqrt(1/12.0), level))
+		pt1 := NewPlaintext(ptStd, math.Sqrt(1/12.0), level)
 
 		ct1 := est.Add(ct0, pt1)
 
@@ -85,8 +85,8 @@ func TestEstimator(t *testing.T) {
 
 	t.Run("Add/Ct/Ct", func(t *testing.T) {
 
-		ct0 := NewCiphertextPK(NewPlaintext(ptStd, 1/12.0, level))
-		ct1 := NewCiphertextPK(NewPlaintext(ptStd, 1/12.0, level))
+		ct0 := NewCiphertextPK(NewPlaintext(ptStd, math.Sqrt(1/12.0), level))
+		ct1 := NewCiphertextPK(NewPlaintext(ptStd, math.Sqrt(1/12.0), level))
 
 		ct2 := est.Add(ct0, ct1)
 
@@ -110,8 +110,8 @@ func TestEstimator(t *testing.T) {
 
 	t.Run("Mul/Pt/Pt", func(t *testing.T) {
 
-		pt0 := NewPlaintext(ptStd, 1/12.0, level)
-		pt1 := NewPlaintext(ptStd, 1/12.0, level)
+		pt0 := NewPlaintext(ptStd, math.Sqrt(1/12.0), level)
+		pt1 := NewPlaintext(ptStd, math.Sqrt(1/12.0), level)
 
 		pt2 := est.Mul(pt0, pt1)
 
@@ -135,8 +135,8 @@ func TestEstimator(t *testing.T) {
 
 		// EMPIRICALLY VERIFIED
 
-		pt0 := NewPlaintext(ptStd, 1/12.0, level)
-		ct1 := NewCiphertextPK(NewPlaintext(ptStd, 1/12.0, level))
+		pt0 := NewPlaintext(ptStd, math.Sqrt(1/12.0), level)
+		ct1 := NewCiphertextPK(NewPlaintext(ptStd, math.Sqrt(1/12.0), level))
 
 		ct2 := est.Mul(pt0, ct1)
 
@@ -301,7 +301,7 @@ func TestEstimator(t *testing.T) {
 		}
 
 		for i := 3; i < 8; i++ {
-			if err = pb.GenPower(i, true, est); err != nil {
+			if err = pb.GenPower(i, false, est); err != nil {
 				t.Fatal(err)
 			}
 		}

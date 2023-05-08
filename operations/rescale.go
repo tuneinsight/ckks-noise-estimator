@@ -65,10 +65,14 @@ func GetNoisRescale(LogN, LogScale int, std float64, nbRuns int) {
 
 			ptTmp := rlwe.NewPlaintextAtLevelFromPoly(ct.Level(), pt.Value)
 			ptTmp.MetaData = ct.MetaData
+			ptTmp.EncodingDomain = rlwe.CoefficientsDomain
 
 			dec.Decrypt(ct, ptTmp)
 
-			c.stats.Update(ecd.DecodeCoeffs(ptTmp))
+			values := make([]float64, params.N())
+			ecd.Decode(ptTmp, values)
+
+			c.stats.Update(values)
 		}
 
 		c.Finalize()

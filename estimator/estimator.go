@@ -97,6 +97,32 @@ func (e *Estimator) Add(el0, el1 Element) (el2 Element) {
 	return
 }
 
+func (e *Estimator) Square(el0 Element) (el1 Element){
+
+	el1 = Element{}
+
+	el1.Level = el0.Level
+
+	el1.Message = SquareSTD(e.N, el0.Message, el0.Message)
+
+	el1.Noise = make([]*big.Float, 3)
+
+	// 2*m*e0 + e0^2
+	el1.Noise[0] = MulSTD(e.N, el0.Message, el0.Noise[0])
+	el1.Noise[0].Add(el1.Noise[0], el1.Noise[0])
+	el1.Noise[0] = AddSTD(el1.Noise[0], SquareSTD(e.N, el0.Noise[0], el0.Noise[0]))
+
+	// 2*e1*(m0+e0)
+	el1.Noise[1] = AddSTD(el0.Noise[0], el0.Message)
+	el1.Noise[1] = MulSTD(e.N, el1.Noise[1], el0.Noise[1])
+	el1.Noise[1].Add(el1.Noise[1], el1.Noise[1])
+
+	// e1^2
+	el1.Noise[2] = SquareSTD(e.N, el0.Noise[1], el0.Noise[1])
+	
+	return
+}
+
 func (e *Estimator) Mul(el0 Element, el1 interface{}) (el2 Element) {
 
 	el2 = Element{}

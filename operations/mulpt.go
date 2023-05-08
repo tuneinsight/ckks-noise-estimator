@@ -28,7 +28,7 @@ func GetNoiseMulPt(LogN, LogSlots, LogScale int, std float64, nbRuns int) {
 
 		ct := ckks.NewCiphertext(params, 1, params.MaxLevel())
 
-		est := estimator.NewEstimator(params.N(), params.HammingWeight(), params.Q(), params.P())
+		est := estimator.NewEstimator(params.N(), params.XsHammingWeight(), params.Q(), params.P())
 
 		for i := 0; i < nbRuns; i++ {
 

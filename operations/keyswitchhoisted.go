@@ -31,13 +31,15 @@ func KeySwitchHoisted(LogN, H int, nbRuns int) {
 		coeffsBig[i] = new(big.Int)
 	}
 
-	est := estimator.NewEstimator(params.N(), params.HammingWeight(), params.Q(), params.P())
+	est := estimator.NewEstimator(params.N(), params.XsHammingWeight(), params.Q(), params.P())
 
 	for i := 0; i < nbRuns; i++ {
 
 		c.GenKeys()
 
-		rtks := c.kgen.GenRotationKeysForRotations([]int{k}, false, c.sk)
+		evk := &rlwe.EvaluationKeySet{
+			GaloisKeys: map[uint64]*rlwe.GaloisKey{5: c.kgen.GenGaloisKeyNew(5, c.sk)},
+		}
 
 		enc := ckks.NewEncryptor(params, c.pk)
 		dec := c.dec
@@ -48,7 +50,7 @@ func KeySwitchHoisted(LogN, H int, nbRuns int) {
 
 		// Enc(pt1) x pt2
 
-		eval = eval.WithKey(rlwe.EvaluationKey{Rtks: rtks})
+		eval = eval.WithKey(evk)
 
 		//buffQP := eval.GetRLWEEvaluator().BuffDecompQP
 		//eval.GetRLWEEvaluator().DecomposeNTT(ct.Level(), params.MaxLevelP(), params.PCount(), ct.Value[1], ct.IsNTT, buffQP)

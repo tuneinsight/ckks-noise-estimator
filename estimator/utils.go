@@ -61,9 +61,22 @@ func SubSTD(a, b *big.Float) (c *big.Float) {
 	return
 }
 
+
+// MulSTD: sqrt(N) * a * b
 func MulSTD(N, a, b *big.Float) (c *big.Float) {
 	c = new(big.Float).Mul(a, b)
 	c.Mul(c, new(big.Float).Sqrt(N))
+	return
+}
+
+// SquareSTD: sqrt(2N+1) * a * b
+func SquareSTD(N, a, b *big.Float) (c *big.Float){
+	c = new(big.Float).Mul(a, b)
+	sqrttwoNPlushalf := new(big.Float).Set(N)
+	sqrttwoNPlushalf.Add(sqrttwoNPlushalf, sqrttwoNPlushalf)
+	sqrttwoNPlushalf.Add(sqrttwoNPlushalf, new(big.Float).SetPrec(N.Prec()).SetFloat64(0.5))
+	sqrttwoNPlushalf.Sqrt(sqrttwoNPlushalf)
+	c.Mul(c, sqrttwoNPlushalf)
 	return
 }
 

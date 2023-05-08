@@ -1,7 +1,9 @@
 package estimator
 
 import (
+	"fmt"
 	"math"
+	"math/big"
 
 	"github.com/tuneinsight/lattigo/v4/utils/bignum/polynomial"
 )
@@ -36,12 +38,15 @@ func (p *PowerBasis) GenPower(n int, lazy bool, eval *Estimator) (err error) {
 			return
 		}
 
+		fmt.Println(n, eval.Std(p.Value[n]))
+
 		if rescale {
 			if p.Value[n], err = eval.Rescale(p.Value[n]); err != nil {
 				return
 			}
-		}
 
+			fmt.Println(n, eval.Std(p.Value[n]))
+		}
 	}
 
 	return nil
@@ -118,18 +123,29 @@ func (p *PowerBasis) genPower(n int, lazy bool, eval *Estimator) (rescale bool, 
 				}
 			}
 
-			p.Value[n] = eval.Mul(p.Value[a], p.Value[b])
+			if a == b{
+				p.Value[n] = eval.Square(p.Value[a])
+			}else{
+				p.Value[n] = eval.Mul(p.Value[a], p.Value[b])
+			}
+
 			p.Value[n] = eval.Relinearize(p.Value[n])
 		}
+
+		
 
 		if p.Basis == polynomial.Chebyshev {
 
 			// Computes C[n] = 2*C[a]*C[b]
-			p.Value[n] = eval.Add(p.Value[n], p.Value[n])
+			p.Value[n] = eval.Mul(p.Value[n], 2)
+			p.Value[n].Message.Quo(p.Value[n].Message, new(big.Float).SetFloat64(1.63))
 
 			// Computes C[n] = 2*C[a]*C[b] - C[c]
 			if c == 0 {
-				//p.Value[n] = eval.Add(p.Value[n], -1) // Constant addition = no noise
+				//p.Value[n] = eval.Add(p.Value[n], -1) // Constant addition = no noise (well in fact (1/12, 0), so = negligible)
+
+				//
+
 			} else {
 				// Since C[0] is not stored (but rather seen as the constant 1), only recurses on c if c!= 0
 				if err = p.GenPower(c, lazy, eval); err != nil {

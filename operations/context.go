@@ -1,22 +1,25 @@
 package operations
 
 import (
+	"fmt"
 	"math"
 	"math/rand"
 	"time"
+	"math/big"
 
 	"github.com/tuneinsight/ckks-bootstrapping-precision/stats"
 	"github.com/tuneinsight/lattigo/v4/ckks"
 	"github.com/tuneinsight/lattigo/v4/rlwe"
+	"github.com/tuneinsight/lattigo/v4/ring/distribution"
 )
 
 type Context struct {
 	params ckks.Parameters
-	kgen   rlwe.KeyGenerator
+	kgen   *rlwe.KeyGenerator
 	enc    rlwe.Encryptor
 	dec    rlwe.Decryptor
-	ecd    ckks.Encoder
-	eval   ckks.Evaluator
+	ecd    *ckks.Encoder
+	eval   *ckks.Evaluator
 	std    float64
 	sk     *rlwe.SecretKey
 	pk     *rlwe.PublicKey
@@ -30,9 +33,9 @@ func NewContext(LogN, H, LogScale int) (c *Context) {
 	var params ckks.Parameters
 	if params, err = ckks.NewParametersFromLiteral(ckks.ParametersLiteral{
 		LogN:     LogN,
-		LogQ:     []int{60, 45, 45, 45, 45},
+		LogQ:     []int{60, LogScale, LogScale, LogScale, LogScale, LogScale, LogScale, LogScale},
 		LogP:     []int{61, 61},
-		H:        H,
+		Xs:       &distribution.Ternary{H:H},
 		LogScale: LogScale,
 	}); err != nil {
 		panic(err)
@@ -40,7 +43,7 @@ func NewContext(LogN, H, LogScale int) (c *Context) {
 
 	kgen := ckks.NewKeyGenerator(params)
 	ecd := ckks.NewEncoder(params)
-	eval := ckks.NewEvaluator(params, rlwe.EvaluationKey{})
+	eval := ckks.NewEvaluator(params, nil)
 
 	return &Context{
 		params: params,
@@ -53,8 +56,8 @@ func NewContext(LogN, H, LogScale int) (c *Context) {
 
 // GenKeys generates a new set of keys.
 func (c *Context) GenKeys() {
-	c.sk = c.kgen.GenSecretKey()
-	c.pk = c.kgen.GenPublicKey(c.sk)
+	c.sk = c.kgen.GenSecretKeyNew()
+	c.pk = c.kgen.GenPublicKeyNew(c.sk)
 	c.enc = ckks.NewEncryptor(c.params, c.pk)
 	c.dec = ckks.NewDecryptor(c.params, c.sk)
 }
@@ -71,7 +74,7 @@ func (c *Context) ToCSV() []string {
 
 func (c *Context) NewPlaintextVector(std float64, logSlots int, values []float64, pt *rlwe.Plaintext) (stdPt float64) {
 
-	ecd := c.ecd
+	ecd := ckks.NewEncoder(c.params, 128)
 
 	t := time.Now().UnixMilli()
 	r := rand.New(rand.NewSource(t))
@@ -94,9 +97,43 @@ func (c *Context) NewPlaintextVector(std float64, logSlots int, values []float64
 		values[i] = v * std
 	}
 
-	ecd.EncodeCoeffs(values, pt)
+	pt.EncodingDomain = rlwe.CoefficientsDomain
+	ecd.Encode(values, pt)
 
 	return standarddeviation(values)
+}
+
+func (c *Context) NewPlaintextSlots(min, max float64, logSlots int) (pt *rlwe.Plaintext, values []*big.Float, stdPt float64){
+
+	ecd := c.ecd
+
+	t := time.Now().UnixMilli()
+	r := rand.New(rand.NewSource(t))
+
+	slots := 1<<logSlots
+
+	values = make([]*big.Float, slots)
+
+	for i := range values{
+		values[i] = new(big.Float).SetPrec(128).SetFloat64((max-min) * r.Float64() + min)
+	}
+
+	pt = ckks.NewPlaintext(c.params, c.params.MaxLevel())
+	pt.EncodingDomain = rlwe.SlotsDomain
+	pt.LogSlots = logSlots
+	ecd.Encode(values, pt)
+
+	valuesf64 := make([]float64, c.params.N())
+
+	pt.EncodingDomain = rlwe.CoefficientsDomain
+	ecd.Decode(pt, valuesf64)
+	pt.EncodingDomain = rlwe.SlotsDomain
+
+	//fmt.Println(valuesf64)
+
+	stdPt = standarddeviation(valuesf64)
+	fmt.Println(stdPt)
+	return pt, values, stdPt
 }
 
 

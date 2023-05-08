@@ -31,7 +31,7 @@ func GetNoiseLinearTransform(LogN, H, LogSlots, LogScale int, nonZeroDiags map[i
 		diags[i] = make([]complex128, 1<<LogSlots)
 	}
 
-	est := estimator.NewEstimator(params.N(), params.HammingWeight(), params.Q(), params.P())
+	est := estimator.NewEstimator(params.N(), params.XsHammingWeight(), params.Q(), params.P())
 
 	for i := 0; i < nbRuns; i++ {
 
@@ -63,18 +63,24 @@ func GetNoiseLinearTransform(LogN, H, LogSlots, LogScale int, nonZeroDiags map[i
 
 		LT := ckks.GenLinearTransformBSGS(ecd, diags, params.MaxLevel(), rlwe.NewScale(params.Q()[params.MaxLevel()]), Log2BSGSRatio, LogSlots)
 
-		rots := LT.Rotations()
+		evk := rlwe.NewEvaluationKeySet()
 
-		rotKey := c.kgen.GenRotationKeysForRotations(rots, false, c.sk)
+		for _, galEl := range LT.GaloisElements(params){
+			evk.GaloisKeys[galEl] = c.kgen.GenGaloisKeyNew(galEl, c.sk)
+		}
 
-		eval := c.eval.WithKey(rlwe.EvaluationKey{Rtks: rotKey})
+		eval := c.eval.WithKey(evk)
 
 		values := make([]complex128, 1<<LogSlots)
 		for i := range values {
 			values[i] = NormComplex(r, std)
 		}
 
-		pt := ecd.EncodeNew(values, params.MaxLevel(), params.DefaultScale(), LogSlots)
+		pt := ckks.NewPlaintext(params, params.MaxLevel())
+		pt.Scale = params.DefaultScale()
+		pt.LogSlots = LogSlots
+
+		ecd.Encode(values, pt)
 
 		// Get the standard deviation of the plaintext in the ring
 		stdPT := STDPoly(params.RingQ().AtLevel(pt.Level()), pt.Value, 1, false)
@@ -85,7 +91,7 @@ func GetNoiseLinearTransform(LogN, H, LogSlots, LogScale int, nonZeroDiags map[i
 
 		// Subtract the linear transform in the clear
 		pt.Scale = ct.Scale
-		ecd.Encode(EvaluateLinearTransform(values, diags, Log2BSGSRatio), pt, LogSlots)
+		ecd.Encode(EvaluateLinearTransform(values, diags, Log2BSGSRatio), pt)
 		eval.Sub(ct, pt, ct)
 
 		// Decrypt and log STD
@@ -156,9 +162,9 @@ func EvaluateLinearTransform(values []complex128, diags map[int][]complex128, Lo
 
 	slots := len(values)
 
-	N1 := ckks.FindBestBSGSRatio(diags, len(values), LogBSGSRatio)
+	N1 := rlwe.FindBestBSGSRatio(diags, len(values), LogBSGSRatio)
 
-	index, _, _ := ckks.BSGSIndex(diags, slots, N1)
+	index, _, _ := rlwe.BSGSIndex(diags, slots, N1)
 
 	res = make([]complex128, slots)
 
@@ -175,16 +181,16 @@ func EvaluateLinearTransform(values []complex128, diags map[int][]complex128, Lo
 				v = diags[j+i-slots]
 			}
 
-			a := utils.RotateComplex128Slice(values, i)
+			a := utils.RotateSlice(values, i)
 
-			b := utils.RotateComplex128Slice(v, rot)
+			b := utils.RotateSlice(v, rot)
 
 			for i := 0; i < slots; i++ {
 				tmp[i] += a[i] * b[i]
 			}
 		}
 
-		tmp = utils.RotateComplex128Slice(tmp, j)
+		tmp = utils.RotateSlice(tmp, j)
 
 		for i := 0; i < slots; i++ {
 			res[i] += tmp[i]

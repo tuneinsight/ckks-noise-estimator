@@ -1,6 +1,7 @@
 package estimator_test
 
 import (
+	"time"
 	"testing"
 
 	estimator "github.com/tuneinsight/ckks-bootstrapping-precision/estimator_v2"
@@ -11,55 +12,67 @@ import (
 
 func TestEstimator(t *testing.T) {
 
-	LogN := 14
-	Sigma := 3.2
-	var prec uint = 256
-	H := 512
-	LogScale := 90
+	paramsCKKS, err := ckks.NewParametersFromLiteral(ckks.ParametersLiteral{
+		LogN: 14,
+		LogQ: []int{55, 45, 45, 45, 45, 45, 45, 45, 45, 45, 45},
+		LogP: []int{61, 61, 61},
+		LogDefaultScale: 45,
+	})
 
-	p := estimator.NewParameters(LogN, Sigma, H, LogScale, prec)
+	if err != nil{
+		panic(err)
+	}
+
+	p := estimator.NewParameters(paramsCKKS)
 
 	values0 := make([]*bignum.Complex, p.MaxSlots())
-	values1 := make([]*bignum.Complex, p.MaxSlots())
 
-	a := complex(-1, -1)
-	b := complex(1, 1)
+	a := complex(-1, 0)
+	b := complex(1, 0)
 
 	for i := range values0 {
 		values0[i] = &bignum.Complex{
-			bignum.NewFloat(sampling.RandFloat64(real(a), real(b)), prec),
-			bignum.NewFloat(sampling.RandFloat64(imag(a), imag(b)), prec),
-		}
-		values1[i] = &bignum.Complex{
-			bignum.NewFloat(sampling.RandFloat64(real(a), real(b)), prec),
-			bignum.NewFloat(sampling.RandFloat64(imag(a), imag(b)), prec),
+			estimator.NewFloat(sampling.RandFloat64(real(a), real(b))),
+			estimator.NewFloat(sampling.RandFloat64(imag(a), imag(b))),
 		}
 	}
 
-	pt0 := estimator.NewPlaintext(p, values0)
-	pt0.Add(&pt0, p.RoundingNoise())
-	pt0.Add(&pt0, p.EncryptionNoiseSk())
 
-	pt1 := estimator.NewPlaintext(p, values1)
-	pt1.Add(&pt1, p.RoundingNoise())
-	pt1.Add(&pt1, p.EncryptionNoiseSk())
+	el0 := estimator.NewElement(p, values0, 1, p.DefaultScale())
+	el0.AddEncodingNoise()
+	el0.AddEncryptionNoiseSk()
 
-	pt0.Mul(&pt0, &pt1)
+	now := time.Now()
+
+	n := 9
+
+	for k := 0; k < n; k++{
+		el0.Mul(&el0, &el0)
+		el0.Add(&el0, &el0)
+		el0.Add(&el0, -1)
+		el0.Relinearize()
+
+		if err := el0.Rescale(); err != nil{
+			panic(err)
+		}
+	}
+	
+	el0.Normalize()
+
+	t.Log(el0.Value[0])
+
+	t.Logf("Since: %s\n", time.Since(now))
 
 	mul := bignum.NewComplexMultiplier().Mul
-	for i := range values0 {
-		mul(values0[i], values1[i], values0[i])
+
+	for k := 0; k < n; k++{
+		for i := range values0 {
+			
+			mul(values0[i], values0[i], values0[i])
+			values0[i].Add(values0[i], values0[i])
+			values0[i].Add(values0[i], &bignum.Complex{estimator.NewFloat(-1), estimator.NewFloat(0)})
+		}
 	}
-
-	params, err := ckks.NewParametersFromLiteral(ckks.ParametersLiteral{
-		LogN:            LogN,
-		LogQ:            []int{60},
-		LogDefaultScale: LogScale,
-	})
-
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	ckks.VerifyTestVectors(params, ckks.NewEncoder(params, prec), nil, values0, pt0.Value, params.LogDefaultScale(), nil, true, t)
+	
+	ckks.VerifyTestVectors(paramsCKKS, ckks.NewEncoder(paramsCKKS, 256), nil, values0, el0.Value, paramsCKKS.LogDefaultScale(), nil, true, t)
 }

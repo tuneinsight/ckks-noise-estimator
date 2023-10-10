@@ -10,24 +10,10 @@ import (
 
 // Noise samples noise in R[X]/(X^N+1) according to f(), scales it by 2^-logScale and
 // returns it in C^N/2.
-func (p Parameters) Noise(f func() float64) (e []*bignum.Complex) {
+func (p Parameters) Noise(f func() *big.Float) (e []*bignum.Complex) {
 	e = make([]*bignum.Complex, p.MaxSlots())
-
-	scale := new(big.Int).SetInt64(1)
-	scale.Lsh(scale, uint(p.LogScale))
-	scaleF := new(big.Float).SetPrec(p.Prec).SetInt(scale)
-
 	for i := range e {
-
-		e[i] = &bignum.Complex{}
-
-		ee := e[i]
-
-		ee[0] = new(big.Float).SetPrec(p.Prec).SetFloat64(f())
-		ee[1] = new(big.Float).SetPrec(p.Prec).SetFloat64(f())
-
-		ee[0].Quo(ee[0], scaleF)
-		ee[1].Quo(ee[1], scaleF)
+		e[i] = &bignum.Complex{f(), f()}
 	}
 
 	// R[X]/(X^N+1) -> C^N/2
@@ -42,23 +28,30 @@ func (p Parameters) Noise(f func() float64) (e []*bignum.Complex) {
 // Standard deviation: sqrt(1/12)
 func (p Parameters) RoundingNoise() (e []*bignum.Complex) {
 	r := rand.New(rand.NewSource(time.Now().UnixNano()))
-	return p.Noise(func() float64 { return r.Float64() - 0.5 })
+	return p.Noise(func() *big.Float { return NewFloat(r.Float64() - 0.5) })
 }
 
 func (p Parameters) EncryptionNoiseSk() (e []*bignum.Complex) {
+
 	r := rand.New(rand.NewSource(time.Now().UnixNano()))
 
 	sigma := p.Sigma
 
-	f := func() (s float64) {
-		s = r.NormFloat64() * sigma
+	f := func() (*big.Float) {
+
+		s := r.NormFloat64() * sigma
 
 		if r.Int()&1 == 0 {
 			s *= -1
 		}
 
-		return s
+		return NewFloat(s)
 	}
 
 	return p.Noise(f)
+}
+
+// Standard Deviation: sqrt(N * (var(noise_base) * var(SK) * P + var(noise_key) * sum(var(q_alpha_i)))
+func (p Parameters) KeySwitchingNoise(){
+	//[-as + m + e0, a + e1]
 }

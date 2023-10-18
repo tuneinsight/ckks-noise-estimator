@@ -80,6 +80,22 @@ func (p *Element) AddEncryptionNoiseSk(){
 	}
 }
 
+func (p *Element) AddEncryptionNoisePk(){
+	e := p.EncryptionNoisePk()
+	value := p.Value
+	for i := range value{
+		value[i].Add(value[i], e[i])
+	}
+}
+
+func (p *Element) AddKeySwitchingNoise(eCt []*bignum.Complex){
+	eKS := p.KeySwitchingNoise(p.Level, eCt, p.Sk[0])
+	value := p.Value
+	for i := range value{
+		value[i].Add(value[i], eKS[i])
+	}
+}
+
 func (p *Element) Relinearize() {
 	if p.Degree != 2{
 		panic("cannot Relinearize: element.Degree != 2")

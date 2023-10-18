@@ -16,6 +16,7 @@ type Parameters struct {
 	H      int
 	Q      []*big.Float
 	P      *big.Float
+	LevelP int
 	Sk [][]*bignum.Complex
 }
 
@@ -40,22 +41,27 @@ func NewParameters(p ckks.Parameters) Parameters {
 	// Samples a secret-key
 	H := p.XsHammingWeight()
 	N := p.N()
-	sk := make([]*bignum.Complex, N)
+	skF := make([]*big.Float, N)
 	for i := 0; i < H; i++{
 		if i &1 == 0{
-			sk[i] = &bignum.Complex{NewFloat(1), NewFloat(0)}
+			skF[i] = NewFloat(1)
 		}else{
-			sk[i] = &bignum.Complex{NewFloat(-1), NewFloat(0)}
+			skF[i] = NewFloat(-1)
 		}
 		
 	}
 	for i := H; i < N; i++{
-		sk[i] = &bignum.Complex{NewFloat(0), NewFloat(0)}
+		skF[i] = NewFloat(0)
 	}
 
 	r := rand.New(rand.NewSource(time.Now().UnixNano()))
 
-	r.Shuffle(N, func(i, j int){sk[i], sk[j] = sk[j], sk[i]})
+	r.Shuffle(len(skF), func(i, j int){skF[i], skF[j] = skF[j], skF[i]})
+
+	sk := make([]*bignum.Complex, p.MaxSlots())
+	for i := range sk{
+		sk[i] = &bignum.Complex{skF[2*i], skF[2*i+1]}
+	}
 
 	// R[X]/(X^N+1) -> C^N/2
 	if err := Encoder.FFT(sk, p.LogMaxSlots()); err != nil {
@@ -63,7 +69,7 @@ func NewParameters(p ckks.Parameters) Parameters {
 	}
 
 	mul := bignum.NewComplexMultiplier().Mul
-	sk2 := make([]*bignum.Complex, N)
+	sk2 := make([]*bignum.Complex, p.MaxSlots())
 	for i := range sk2{
 		sk2[i] = &bignum.Complex{NewFloat(0), NewFloat(0)}
 		mul(sk[i], sk[i], sk2[i])
@@ -76,9 +82,14 @@ func NewParameters(p ckks.Parameters) Parameters {
 		Encoder: *Encoder,
 		Q:Qi,
 		P:Pi,
+		LevelP: len(P)-1,
 		Scale:p.DefaultScale().Value,
 		Sk: [][]*bignum.Complex{sk, sk2},
 	}
+}
+
+func (p Parameters) N() int {
+	return 1<<p.LogN
 }
 
 func (p Parameters) MaxSlots() int {

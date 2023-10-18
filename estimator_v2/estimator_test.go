@@ -40,7 +40,7 @@ func TestEstimator(t *testing.T) {
 
 	el0 := estimator.NewElement(p, values0, 1, p.DefaultScale())
 	el0.AddEncodingNoise()
-	el0.AddEncryptionNoiseSk()
+	el0.AddEncryptionNoisePk()
 
 	now := time.Now()
 
@@ -48,9 +48,9 @@ func TestEstimator(t *testing.T) {
 
 	for k := 0; k < n; k++{
 		el0.Mul(&el0, &el0)
+		el0.Relinearize()
 		el0.Add(&el0, &el0)
 		el0.Add(&el0, -1)
-		el0.Relinearize()
 
 		if err := el0.Rescale(); err != nil{
 			panic(err)

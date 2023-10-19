@@ -1,13 +1,13 @@
 package estimator
 
-import(
+import (
 	"fmt"
 	"math"
 	"math/big"
 )
 
 const (
-	prec = uint(256)
+	prec = uint(128)
 )
 
 func DecompRNS(levelQ, levelP int) int {

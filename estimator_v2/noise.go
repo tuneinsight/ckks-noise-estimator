@@ -1,7 +1,7 @@
 package estimator
 
 import (
-	"fmt"
+	"math"
 	"math/big"
 	"math/rand"
 	"time"
@@ -25,6 +25,34 @@ func (p Parameters) Noise(f func() *big.Float) (e []*bignum.Complex) {
 	return
 }
 
+// NoiseRingToCanonical samples a noisy vector with standard deviation
+// sigma * sqrt(N/2), which emulates the sampling in the ring followed
+// by the encoding of the noisy vector with the canonical embeding.
+func (p Parameters) NoiseRingToCanonical(sigma float64) (e []*bignum.Complex) {
+	r := rand.New(rand.NewSource(time.Now().UnixNano()))
+
+	// R[X]/(X^N+1) -> C^N/2 increases variance by sqrt(N/2)
+	sigma *= math.Sqrt(float64(p.N() / 2))
+
+	f := func() *big.Float {
+
+		s := r.NormFloat64() * sigma
+
+		if r.Int()&1 == 0 {
+			s *= -1
+		}
+
+		return NewFloat(s)
+	}
+
+	e = make([]*bignum.Complex, p.MaxSlots())
+	for i := range e {
+		e[i] = &bignum.Complex{f(), f()}
+	}
+
+	return
+}
+
 // RoundingNoise samples a rounding error in the ring and decode it into the canonical embeding
 // Standard deviation: sqrt(1/12)
 func (p Parameters) RoundingNoise() (e []*bignum.Complex) {
@@ -36,7 +64,7 @@ func (p Parameters) EncryptionNoisePk() (e []*bignum.Complex) {
 	e1 := p.RoundingNoise()
 	e0 := p.RoundingNoise()
 	mul := bignum.NewComplexMultiplier().Mul
-	for i := range e0{
+	for i := range e0 {
 		mul(e1[i], p.Sk[0][i], e1[i])
 		e0[i].Add(e0[i], e1[i])
 	}
@@ -50,7 +78,7 @@ func (p Parameters) EncryptionNoiseSk() (e []*bignum.Complex) {
 
 	sigma := p.Sigma
 
-	f := func() (*big.Float) {
+	f := func() *big.Float {
 
 		s := r.NormFloat64() * sigma
 
@@ -66,27 +94,26 @@ func (p Parameters) EncryptionNoiseSk() (e []*bignum.Complex) {
 
 // Standard Deviation: sqrt(N * (var(noise_base) * var(SK) * P + var(noise_key) * sum(var(q_alpha_i)))
 // Returns eCt * sk * P + sum(e_i * qalphai)
-func (p Parameters) KeySwitchingNoise(levelQ int, eCt, sk []*bignum.Complex) (e []*bignum.Complex){
+func (p Parameters) KeySwitchingNoise(levelQ int, eCt, sk []*bignum.Complex) (e []*bignum.Complex) {
 
 	P := p.P
 
 	e = make([]*bignum.Complex, p.MaxSlots())
 
-	for i := range e{
+	for i := range e {
 		e[i] = bignum.NewComplex()
 	}
 
 	// eCt * P * sk
 	mul := bignum.NewComplexMultiplier().Mul
 	tmp := bignum.NewComplex()
-	for i := range e{
+	for i := range e {
 		mul(eCt[i], sk[i], tmp)
 		tmp[0].Mul(tmp[0], P)
 		tmp[1].Mul(tmp[1], P)
 		e[i].Add(e[i], tmp)
 	}
 
-	/*
 	// var(noise_ct) * var(H) * P + var(ekey) * sum(var(q_alpha_i)))
 	decompRNS := DecompRNS(levelQ, p.LevelP)
 	for i := 0; i < decompRNS; i++ {
@@ -105,28 +132,23 @@ func (p Parameters) KeySwitchingNoise(levelQ int, eCt, sk []*bignum.Complex) (e 
 		}
 
 		ei := p.EncryptionNoiseSk()
-		for i := range ei{
+		for i := range ei {
 			ei[i][0].Mul(ei[i][0], qalphai)
 			ei[i][1].Mul(ei[i][1], qalphai)
 
 			e[i].Add(e[i], ei[i])
 		}
 	}
-	*/
 
-	for i := range e{
+	for i := range e {
 		e[i][0].Quo(e[i][0], P)
 		e[i][1].Quo(e[i][1], P)
 	}
 
 	r := p.RoundingNoise()
 
-	for i := range e{
+	for i := range e {
 		e[i].Add(e[i], r[i])
-	}
-
-	for i := 0; i < 8; i++{
-		fmt.Println(e[i][0], e[i][1])
 	}
 
 	return

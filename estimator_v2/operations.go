@@ -62,10 +62,10 @@ func (p *Element) Mul(op0 *Element, op1 rlwe.Operand) *Element {
 			panic(fmt.Errorf("invalid input dimensions: do not match receiver dimension"))
 		}
 
-		if op0.Degree + op1.Degree > 2{
+		if op0.Degree+op1.Degree > 2 {
 			panic(fmt.Errorf("invalid input degree: sum cannot exceed 2"))
 		}
-		
+
 		// m0 * m1
 		m1 := op1.Value
 		for i := range m2 {

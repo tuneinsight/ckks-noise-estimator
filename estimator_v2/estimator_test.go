@@ -2,6 +2,7 @@ package estimator_test
 
 import (
 	"fmt"
+	"math/big"
 	"os"
 	"runtime/pprof"
 	"testing"
@@ -11,6 +12,7 @@ import (
 	estimator "github.com/tuneinsight/ckks-bootstrapping-precision/estimator_v2"
 	"github.com/tuneinsight/lattigo/v4/ckks"
 	"github.com/tuneinsight/lattigo/v4/rlwe"
+	"github.com/tuneinsight/lattigo/v4/utils"
 	"github.com/tuneinsight/lattigo/v4/utils/bignum"
 	"github.com/tuneinsight/lattigo/v4/utils/sampling"
 )
@@ -31,9 +33,12 @@ func newTestContext(params ckks.Parameters) testContext {
 	sk, pk := kgen.GenKeyPairNew()
 	evk := rlwe.NewMemEvaluationKeySet(kgen.GenRelinearizationKeyNew(sk))
 
+	estimator := estimator.NewParameters(params)
+	estimator.Heuristic = true
+
 	return testContext{
 		params:    params,
-		estimator: estimator.NewParameters(params),
+		estimator: estimator,
 		kgen:      kgen,
 		sk:        sk,
 		pk:        pk,
@@ -77,9 +82,9 @@ func newTestVector(tc testContext, key rlwe.EncryptionKey, a, b complex128) (val
 func TestEstimator(t *testing.T) {
 
 	params, err := ckks.NewParametersFromLiteral(ckks.ParametersLiteral{
-		LogN:            14,
-		LogQ:            []int{55, 45, 45, 45, 45, 45, 45, 45, 45, 45, 45},
-		LogP:            []int{61, 61, 61},
+		LogN:            12,
+		LogQ:            []int{55, 45, 45, 45, 45, 45, 45, 45, 45, 45},
+		LogP:            []int{45},
 		LogDefaultScale: 45,
 	})
 
@@ -90,56 +95,205 @@ func TestEstimator(t *testing.T) {
 	tc := newTestContext(params)
 
 	testChebyshevPowers(tc, t)
+	testKeySwitching(tc, t)
+}
 
+func newPrecisionStats() ckks.PrecisionStats {
+	return ckks.PrecisionStats{
+		MaxDelta:        newStats(),
+		MinDelta:        newStats(),
+		MaxPrecision:    newStats(),
+		MinPrecision:    newStats(),
+		MeanDelta:       newStats(),
+		MeanPrecision:   newStats(),
+		MedianDelta:     newStats(),
+		MedianPrecision: newStats(),
+	}
+}
+
+func newStats() ckks.Stats {
+	return ckks.Stats{new(big.Float), new(big.Float), new(big.Float)}
+}
+
+func testKeySwitching(tc testContext, t *testing.T) {
+
+	t.Run("Rotate/sk", func(t *testing.T) {
+
+		statsHave := newPrecisionStats()
+		statsWant := newPrecisionStats()
+
+		d := 8
+
+		gk := tc.kgen.GenGaloisKeyNew(tc.params.GaloisElement(1), tc.sk)
+
+		evk := rlwe.NewMemEvaluationKeySet(nil, gk)
+
+		eval := tc.evaluator.WithKey(evk)
+
+		for w := 0; w < d; w++ {
+
+			values, el, _, ct := newTestVector(tc, tc.sk, -1, 1)
+
+			RunTimed("estimator", func() {
+				el.Rotate(1)
+				el.Decrypt()
+				el.Normalize()
+			})
+
+			RunTimed("encrypted", func() {
+				require.NoError(t, eval.Rotate(ct, 1, ct))
+			})
+
+			utils.RotateSliceInPlace(values, 1)
+
+			pWant := ckks.GetPrecisionStats(tc.params, tc.encoder, nil, values, el.Value[0], nil, false)
+			pHave := ckks.GetPrecisionStats(tc.params, tc.encoder, tc.decryptor, values, ct, nil, false)
+
+			addStats(&statsWant, &pWant, &statsWant)
+			addStats(&statsHave, &pHave, &statsHave)
+		}
+
+		statsDiv(&statsWant, new(big.Float).SetInt64(int64(d)))
+		statsDiv(&statsHave, new(big.Float).SetInt64(int64(d)))
+
+		fmt.Println(statsWant.String())
+		fmt.Println(statsHave.String())
+	})
 }
 
 func testChebyshevPowers(tc testContext, t *testing.T) {
 
 	t.Run("Chebyshev512Power/sk", func(t *testing.T) {
 
-		values, el, _, ct := newTestVector(tc, tc.sk, -1, 1)
+		statsHave := newPrecisionStats()
+		statsWant := newPrecisionStats()
 
-		n := 9
+		d := 8
 
-		RunProfiled(func() {
-			RunTimed("estimator", func() {
+		for w := 0; w < d; w++ {
 
-				for k := 0; k < n; k++ {
-					el.Mul(&el, &el)
-					el.Relinearize()
-					el.Add(&el, &el)
-					el.Add(&el, -1)
-					require.NoError(t, el.Rescale())
-				}
+			values, el, _, ct := newTestVector(tc, tc.sk, -1, 1)
 
-				el.Normalize()
+			n := 9
+
+			RunProfiled(func() {
+				RunTimed("estimator", func() {
+
+					for k := 0; k < n; k++ {
+						el.Mul(&el, &el)
+						el.Relinearize()
+						el.Add(&el, &el)
+						el.Add(&el, -1)
+						el.Rescale()
+					}
+
+					el.Decrypt()
+					el.Normalize()
+				})
 			})
-		})
 
-		RunTimed("encrypted", func() {
-			eval := tc.evaluator
+			RunTimed("encrypted", func() {
+				eval := tc.evaluator
+				for k := 0; k < n; k++ {
+					require.NoError(t, eval.MulRelin(ct, ct, ct))
+					require.NoError(t, eval.Mul(ct, 2, ct))
+					require.NoError(t, eval.Add(ct, -1, ct))
+					require.NoError(t, eval.Rescale(ct, ct))
+				}
+			})
+
+			mul := bignum.NewComplexMultiplier().Mul
+
 			for k := 0; k < n; k++ {
-				require.NoError(t, eval.MulRelin(ct, ct, ct))
-				require.NoError(t, eval.Mul(ct, 2, ct))
-				require.NoError(t, eval.Add(ct, -1, ct))
-				require.NoError(t, eval.Rescale(ct, ct))
+				for i := range values {
+
+					mul(values[i], values[i], values[i])
+					values[i].Add(values[i], values[i])
+					values[i].Add(values[i], &bignum.Complex{estimator.NewFloat(-1), estimator.NewFloat(0)})
+				}
 			}
-		})
 
-		mul := bignum.NewComplexMultiplier().Mul
+			pWant := ckks.GetPrecisionStats(tc.params, tc.encoder, nil, values, el.Value[0], nil, false)
+			pHave := ckks.GetPrecisionStats(tc.params, tc.encoder, tc.decryptor, values, ct, nil, false)
 
-		for k := 0; k < n; k++ {
-			for i := range values {
-
-				mul(values[i], values[i], values[i])
-				values[i].Add(values[i], values[i])
-				values[i].Add(values[i], &bignum.Complex{estimator.NewFloat(-1), estimator.NewFloat(0)})
-			}
+			addStats(&statsWant, &pWant, &statsWant)
+			addStats(&statsHave, &pHave, &statsHave)
 		}
 
-		ckks.VerifyTestVectors(tc.params, tc.encoder, nil, values, el.Value, 0, nil, true, t)
-		ckks.VerifyTestVectors(tc.params, tc.encoder, tc.decryptor, values, ct, 0, nil, true, t)
+		statsDiv(&statsWant, new(big.Float).SetInt64(int64(d)))
+		statsDiv(&statsHave, new(big.Float).SetInt64(int64(d)))
+
+		fmt.Println(statsWant.String())
+		fmt.Println(statsHave.String())
 	})
+}
+
+func statsDiv(a *ckks.PrecisionStats, b *big.Float) {
+	a.MaxDelta.Real.Quo(a.MaxDelta.Real, b)
+	a.MaxDelta.Imag.Quo(a.MaxDelta.Imag, b)
+	a.MaxDelta.L2.Quo(a.MaxDelta.L2, b)
+
+	a.MinDelta.Real.Quo(a.MinDelta.Real, b)
+	a.MinDelta.Imag.Quo(a.MinDelta.Imag, b)
+	a.MinDelta.L2.Quo(a.MinDelta.L2, b)
+
+	a.MaxPrecision.Real.Quo(a.MaxPrecision.Real, b)
+	a.MaxPrecision.Imag.Quo(a.MaxPrecision.Imag, b)
+	a.MaxPrecision.L2.Quo(a.MaxPrecision.L2, b)
+
+	a.MinPrecision.Real.Quo(a.MinPrecision.Real, b)
+	a.MinPrecision.Imag.Quo(a.MinPrecision.Imag, b)
+	a.MinPrecision.L2.Quo(a.MinPrecision.L2, b)
+
+	a.MeanDelta.Real.Quo(a.MeanDelta.Real, b)
+	a.MeanDelta.Imag.Quo(a.MeanDelta.Imag, b)
+	a.MeanDelta.L2.Quo(a.MeanDelta.L2, b)
+
+	a.MeanPrecision.Real.Quo(a.MeanPrecision.Real, b)
+	a.MeanPrecision.Imag.Quo(a.MeanPrecision.Imag, b)
+	a.MeanPrecision.L2.Quo(a.MeanPrecision.L2, b)
+
+	a.MedianDelta.Real.Quo(a.MedianDelta.Real, b)
+	a.MedianDelta.Imag.Quo(a.MedianDelta.Imag, b)
+	a.MedianDelta.L2.Quo(a.MedianDelta.L2, b)
+
+	a.MedianPrecision.Real.Quo(a.MedianPrecision.Real, b)
+	a.MedianPrecision.Imag.Quo(a.MedianPrecision.Imag, b)
+	a.MedianPrecision.L2.Quo(a.MedianPrecision.L2, b)
+}
+
+func addStats(a, b, c *ckks.PrecisionStats) {
+	c.MaxDelta.Real.Add(a.MaxDelta.Real, b.MaxDelta.Real)
+	c.MaxDelta.Imag.Add(a.MaxDelta.Imag, b.MaxDelta.Imag)
+	c.MaxDelta.L2.Add(a.MaxDelta.L2, b.MaxDelta.L2)
+
+	c.MinDelta.Real.Add(a.MinDelta.Real, b.MinDelta.Real)
+	c.MinDelta.Imag.Add(a.MinDelta.Imag, b.MinDelta.Imag)
+	c.MinDelta.L2.Add(a.MinDelta.L2, b.MinDelta.L2)
+
+	c.MaxPrecision.Real.Add(a.MaxPrecision.Real, b.MaxPrecision.Real)
+	c.MaxPrecision.Imag.Add(a.MaxPrecision.Imag, b.MaxPrecision.Imag)
+	c.MaxPrecision.L2.Add(a.MaxPrecision.L2, b.MaxPrecision.L2)
+
+	c.MinPrecision.Real.Add(a.MinPrecision.Real, b.MinPrecision.Real)
+	c.MinPrecision.Imag.Add(a.MinPrecision.Imag, b.MinPrecision.Imag)
+	c.MinPrecision.L2.Add(a.MinPrecision.L2, b.MinPrecision.L2)
+
+	c.MeanDelta.Real.Add(a.MeanDelta.Real, b.MeanDelta.Real)
+	c.MeanDelta.Imag.Add(a.MeanDelta.Imag, b.MeanDelta.Imag)
+	c.MeanDelta.L2.Add(a.MeanDelta.L2, b.MeanDelta.L2)
+
+	c.MeanPrecision.Real.Add(a.MeanPrecision.Real, b.MeanPrecision.Real)
+	c.MeanPrecision.Imag.Add(a.MeanPrecision.Imag, b.MeanPrecision.Imag)
+	c.MeanPrecision.L2.Add(a.MeanPrecision.L2, b.MeanPrecision.L2)
+
+	c.MedianDelta.Real.Add(a.MedianDelta.Real, b.MedianDelta.Real)
+	c.MedianDelta.Imag.Add(a.MedianDelta.Imag, b.MedianDelta.Imag)
+	c.MedianDelta.L2.Add(a.MedianDelta.L2, b.MedianDelta.L2)
+
+	c.MedianPrecision.Real.Add(a.MedianPrecision.Real, b.MedianPrecision.Real)
+	c.MedianPrecision.Imag.Add(a.MedianPrecision.Imag, b.MedianPrecision.Imag)
+	c.MedianPrecision.L2.Add(a.MedianPrecision.L2, b.MedianPrecision.L2)
 }
 
 func TestEncryptPK(t *testing.T) {

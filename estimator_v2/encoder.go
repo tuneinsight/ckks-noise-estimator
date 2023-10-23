@@ -82,7 +82,7 @@ func (ecd Encoder) IFFT(values interface{}, logN int) (err error) {
 			return fmt.Errorf("cannot IFFT: values.(type)=%T doesn't roots.(type) = %T", values, roots)
 		}
 	default:
-		return fmt.Errorf("cannot IFFT: invalid values.(type), accepted types are []complex128 and []*bignum.Complex but is %T", values)
+		return fmt.Errorf("cannot IFFT: invalid values.(type), accepted types are []complex128 and []bignum.Complex but is %T", values)
 	}
 	return
 

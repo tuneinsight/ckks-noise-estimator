@@ -11,14 +11,15 @@ import (
 
 type Parameters struct {
 	Encoder
-	LogN   int
-	Sigma  float64
-	Scale  big.Float
-	H      int
-	Q      []*big.Float
-	P      *big.Float
-	LevelP int
-	Sk     [][]*bignum.Complex
+	LogN      int
+	Sigma     float64
+	Scale     big.Float
+	H         int
+	Q         []*big.Float
+	P         *big.Float
+	LevelP    int
+	Sk        [][]*bignum.Complex
+	Heuristic bool
 }
 
 func NewParameters(p ckks.Parameters) Parameters {

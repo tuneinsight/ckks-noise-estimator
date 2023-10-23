@@ -2,7 +2,7 @@ module github.com/tuneinsight/ckks-bootstrapping-precision/estimator_v2
 
 go 1.21.1
 
-require github.com/tuneinsight/lattigo/v4 v4.1.1-0.20230927220907-f1c418aba846
+require github.com/tuneinsight/lattigo/v4 v4.1.1-0.20231020185642-8ac744a001b2
 
 require (
 	github.com/ALTree/bigfloat v0.0.0-20220102081255-38c8b72a9924 // indirect

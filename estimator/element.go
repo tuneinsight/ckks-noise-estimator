@@ -2,72 +2,168 @@ package estimator
 
 import (
 	"math/big"
+
+	"github.com/tuneinsight/lattigo/v4/schemes/ckks"
+	"github.com/tuneinsight/lattigo/v4/utils"
+	"github.com/tuneinsight/lattigo/v4/utils/bignum"
 )
 
 type Element struct {
-	Level   int
-	Message *big.Float
-	Noise   []*big.Float
+	*Parameters
+	Degree int
+	Level  int
+	Scale  big.Float
+	Value  [3][]*bignum.Complex //(m + e0, e1, e2)
 }
 
-func (e Element) Degree() int {
-	return len(e.Noise) - 1
+func (p Element) CopyNew() *Element {
+
+	Value := [3][]*bignum.Complex{}
+
+	for i := range Value {
+
+		v0 := p.Value[i]
+		v1 := make([]*bignum.Complex, len(v0))
+
+		for j := range v0 {
+			v1[j] = &bignum.Complex{new(big.Float), new(big.Float)}
+			v1[j].Set(v0[j])
+		}
+
+		Value[i] = v1
+	}
+
+	return &Element{
+		Parameters: p.Parameters,
+		Degree:     p.Degree,
+		Level:      p.Level,
+		Scale:      p.Scale,
+		Value:      Value,
+	}
 }
 
-func (e Element) CopyNew() Element {
-	Noise := make([]*big.Float, len(e.Noise))
+func NewElement[T ckks.Float](p Parameters, v []T, Degree int, scale big.Float) Element {
 
-	for i := range Noise {
-		Noise[i] = new(big.Float).Set(e.Noise[i])
+	if len(v) > p.MaxSlots() {
+		panic("len(v) > p.MaxSlots()")
+	}
+
+	e0 := make([]*bignum.Complex, p.MaxSlots())
+	e1 := make([]*bignum.Complex, p.MaxSlots())
+	e2 := make([]*bignum.Complex, p.MaxSlots())
+
+	for i := range v {
+		e0[i] = bignum.ToComplex(v[i], prec)
+		e0[i][0].Mul(e0[i][0], &scale)
+		e0[i][1].Mul(e0[i][1], &scale)
+	}
+
+	for i := len(v); i < p.MaxSlots(); i++ {
+		e0[i] = bignum.ToComplex(0, prec)
+	}
+
+	for i := range e1 {
+		e1[i] = bignum.ToComplex(0, prec)
+		e2[i] = bignum.ToComplex(0, prec)
 	}
 
 	return Element{
-		Level:   e.Level,
-		Message: new(big.Float).Set(e.Message),
-		Noise:   Noise,
+		Parameters: &p,
+		Degree:     Degree,
+		Level:      p.MaxLevel(),
+		Scale:      scale,
+		Value:      [3][]*bignum.Complex{e0, e1, e2},
 	}
 }
 
-func NewPlaintext(msg, noise interface{}, level int) Element {
+// Decrypt decrypts the element by evaluating <(el0, el1, el2), (1, sk, sk^2)>.
+// Also sets the degree of the elemen to 0.
+func (p *Element) Decrypt() {
 
-	var Message *big.Float
-	if msg == nil {
-		Message = NewFloat(0)
-	} else {
-		Message = NewFloat(msg)
+	v := p.Value[0]
+
+	for i := 1; i < p.Degree+1; i++ {
+		mul := bignum.NewComplexMultiplier().Mul
+		sk := p.Sk[i-1]
+		ei := p.Value[i]
+		for j := range ei {
+			mul(ei[j], sk[j], ei[j])
+		}
+
+		for j := range v {
+			v[j].Add(v[j], ei[j])
+		}
 	}
 
-	var Noise *big.Float
-	if noise == nil {
-		Noise = NewFloat(0)
-	} else {
-		Noise = NewFloat(noise)
-	}
+	p.Degree = 0
+}
 
-	return Element{
-		Level:   level,
-		Message: Message,
-		Noise:   []*big.Float{Noise},
+// AddEncodingNoise adds the encoding noise, which is
+// {round(1/2), 0}.
+func (p *Element) AddEncodingNoise() {
+	e := p.RoundingNoise()
+	value := p.Value[0]
+	for j := range value {
+		value[j].Add(value[j], e[j])
 	}
 }
 
-func NewCiphertextSK(pt Element) Element {
-	return Element{
-		Level:   pt.Level,
-		Message: NewFloat(pt.Message),
-		Noise:   []*big.Float{AddSTD(NoiseFresh, pt.Noise[0]), NewFloat(0)},
+// AddRoundingNoise adds the rounding noise,
+// which is {round(1/2), round(1/2)}.
+func (p *Element) AddRoundingNoise() {
+	for i := 0; i < p.Degree+1; i++ {
+		r := p.RoundingNoise()
+		ei := p.Value[i]
+		for j := range ei {
+			ei[j].Add(ei[j], r[j])
+		}
 	}
 }
 
-func NewCiphertextPK(pt Element) Element {
+// AddEncryptionNoiseSk adds the encryption noise
+// from SK encryption, which is {sigma, 0}.
+func (p *Element) AddEncryptionNoiseSk() {
+	e := p.NormalNoise(p.Sigma)
+	value := p.Value[0]
+	for i := range value {
+		value[i].Add(value[i], e[i])
+	}
+}
 
-	oneTwelve := NewFloat(1)
-	oneTwelve.Quo(oneTwelve, NewFloat(12))
-	oneTwelve.Sqrt(oneTwelve)
+// AddEncryptionNoisePk adds the encryption noise
+// from PK encryption, which is {round(1/2), round(1/2)}
+// This assumes that P != 0 and that |N * e * sk| < P.
+func (p *Element) AddEncryptionNoisePk() {
+	p.Degree = utils.Max(1, p.Degree)
+	p.AddRoundingNoise()
+}
 
-	return Element{
-		Level:   pt.Level,
-		Message: NewFloat(pt.Message),
-		Noise:   []*big.Float{AddSTD(oneTwelve, pt.Noise[0]), oneTwelve}, // ModDown by P kills all error
+// AddKeySwitchingNoise adds the key-switching noise, which is
+// {eCt * sk + round(sum(e_i * qalphai)/P), round(1/2)}
+func (p *Element) AddKeySwitchingNoise(eCt, sk []*bignum.Complex) {
+	e0, e1 := p.KeySwitchingNoise(p.Level, eCt, sk)
+	m0, m1 := p.Value[0], p.Value[1]
+	for i := range m0 {
+		m0[i].Add(m0[i], e0[i])
+		m1[i].Add(m1[i], e1[i])
+	}
+}
+
+// AddKeySwitchingNoiseRaw adds the key-switching noise scaled by P
+// which is // {eCt * sk * P + sum(e_i * qalphai), 0}
+func (p *Element) AddKeySwitchingNoiseRaw(eCt, sk []*bignum.Complex) {
+	e0 := p.KeySwitchingNoiseRaw(p.Level, eCt, sk)
+	m0 := p.Value[0]
+	for i := range m0 {
+		m0[i].Add(m0[i], e0[i])
+	}
+}
+
+func (p *Element) Normalize() {
+	Value := p.Value[0]
+	scale := &p.Scale
+	for i := range Value {
+		Value[i][0].Quo(Value[i][0], scale)
+		Value[i][1].Quo(Value[i][1], scale)
 	}
 }

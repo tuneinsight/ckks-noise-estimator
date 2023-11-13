@@ -5,7 +5,7 @@ import (
 	"math/rand"
 	"time"
 
-	"github.com/tuneinsight/lattigo/v4/ckks"
+	"github.com/tuneinsight/lattigo/v4/he/hefloat"
 	"github.com/tuneinsight/lattigo/v4/utils/bignum"
 )
 
@@ -22,7 +22,7 @@ type Parameters struct {
 	Heuristic bool
 }
 
-func NewParameters(p ckks.Parameters) Parameters {
+func NewParameters(p hefloat.Parameters) Parameters {
 
 	Q := p.Q()
 	P := p.P()

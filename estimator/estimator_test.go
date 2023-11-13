@@ -1,315 +1,317 @@
-package estimator
+package estimator_test
 
 import (
-	"math"
+	"fmt"
 	"math/big"
+	"os"
+	"runtime/pprof"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/require"
-	"github.com/tuneinsight/lattigo/v4/utils/bignum/polynomial"
+	"github.com/tuneinsight/ckks-bootstrapping-precision/estimator"
+	"github.com/tuneinsight/lattigo/v4/he/hefloat"
+	"github.com/tuneinsight/lattigo/v4/schemes/ckks"
+	"github.com/tuneinsight/lattigo/v4/core/rlwe"
+	"github.com/tuneinsight/lattigo/v4/utils"
+	"github.com/tuneinsight/lattigo/v4/utils/bignum"
+	"github.com/tuneinsight/lattigo/v4/utils/sampling"
 )
 
-var delta = 1e-15 //float64 precision
+type testContext struct {
+	params    hefloat.Parameters
+	estimator estimator.Parameters
+	kgen      *rlwe.KeyGenerator
+	sk        *rlwe.SecretKey
+	pk        *rlwe.PublicKey
+	decryptor *rlwe.Decryptor
+	encoder   *hefloat.Encoder
+	evaluator *hefloat.Evaluator
+}
 
-const (
-	stdUni = 0.5772058896878792 // Standard deviation of uniform vector [-1, 1]
-)
+func newTestContext(params hefloat.Parameters) testContext {
+	kgen := hefloat.NewKeyGenerator(params)
+	sk, pk := kgen.GenKeyPairNew()
+	evk := rlwe.NewMemEvaluationKeySet(kgen.GenRelinearizationKeyNew(sk))
+
+	estimator := estimator.NewParameters(params)
+	estimator.Heuristic = true
+
+	return testContext{
+		params:    params,
+		estimator: estimator,
+		kgen:      kgen,
+		sk:        sk,
+		pk:        pk,
+		decryptor: hefloat.NewDecryptor(params, sk),
+		encoder:   hefloat.NewEncoder(params, 256),
+		evaluator: hefloat.NewEvaluator(params, evk),
+	}
+}
+
+func newTestVector(tc testContext, key rlwe.EncryptionKey, a, b complex128) (values []*bignum.Complex, el estimator.Element, pt *rlwe.Plaintext, ct *rlwe.Ciphertext) {
+
+	prec := tc.encoder.Prec()
+
+	values = make([]*bignum.Complex, tc.params.MaxSlots())
+
+	for i := range values {
+		values[i] = &bignum.Complex{
+			bignum.NewFloat(sampling.RandFloat64(real(a), real(b)), prec),
+			bignum.NewFloat(sampling.RandFloat64(imag(a), imag(b)), prec),
+		}
+	}
+
+	el = estimator.NewElement(tc.estimator, values, 1, tc.estimator.DefaultScale())
+	el.AddEncodingNoise()
+
+	pt = hefloat.NewPlaintext(tc.params, tc.params.MaxLevel())
+	tc.encoder.Encode(values, pt)
+
+	switch key := key.(type) {
+	case *rlwe.SecretKey:
+		ct, _ = rlwe.NewEncryptor(tc.params, key).EncryptNew(pt)
+		el.AddEncryptionNoiseSk()
+	case *rlwe.PublicKey:
+		ct, _ = rlwe.NewEncryptor(tc.params, key).EncryptNew(pt)
+		el.AddEncryptionNoisePk()
+	}
+
+	return
+}
 
 func TestEstimator(t *testing.T) {
 
-	LogN := 16
-
-	N := 1 << LogN
-	H := 32768
-
-	sqrtN := math.Sqrt(float64(N))
-
-	ptStd := stdUni / (sqrtN / 1.73248500) * float64(int(1<<45)) // Standard deviation of encoded plaintext with uniform distribution [-1, 1] with 2^{45} scale
-
-	Q := []uint64{1152921504606584833, 35184372744193, 35184373006337, 35184368025601, 35184376545281}
-	P := []uint64{2305843009211596801, 2305843009210023937} //,
-
-	level := 4
-
-	stdSk := NewFloat(H)
-	stdSk.Quo(stdSk, NewFloat(N))
-	stdSk.Sqrt(stdSk)
-
-	est := NewEstimator(N, H, Q, P)
-
-	t.Run("Add/Pt/Pt", func(t *testing.T) {
-
-		pt0 := NewPlaintext(ptStd, math.Sqrt(1/12.0), level)
-		pt1 := NewPlaintext(ptStd, math.Sqrt(1/12.0), level)
-
-		pt2 := est.Add(pt0, pt1)
-
-		tmp := AddSTD(pt0.Message, pt1.Message)
-
-		have, _ := pt2.Message.Float64()
-		want, _ := tmp.Float64()
-
-		require.InDelta(t, want, have, delta)
-
-		have = est.Std(pt2)
-		want, _ = AddSTD(pt0.Noise[0], pt1.Noise[0]).Float64()
-		want = math.Log2(want)
-
-		require.InDelta(t, want, have, delta)
+	params, err := hefloat.NewParametersFromLiteral(hefloat.ParametersLiteral{
+		LogN:            12,
+		LogQ:            []int{60, 60, 60, 60, 60, 60, 60, 60, 60, 60, 60, 60},
+		LogP:            []int{61, 61},
+		LogDefaultScale: 60,
 	})
 
-	t.Run("Add/Ct/Pt", func(t *testing.T) {
+	if err != nil {
+		panic(err)
+	}
 
-		ct0 := NewCiphertextPK(NewPlaintext(ptStd, math.Sqrt(1/12.0), level))
-		pt1 := NewPlaintext(ptStd, math.Sqrt(1/12.0), level)
+	tc := newTestContext(params)
 
-		ct1 := est.Add(ct0, pt1)
+	testChebyshevPowers(tc, t)
+	testKeySwitching(tc, t)
+}
 
-		tmp := AddSTD(ct0.Message, pt1.Message)
+func newPrecisionStats() ckks.PrecisionStats {
+	return ckks.PrecisionStats{
+		MaxDelta:        newStats(),
+		MinDelta:        newStats(),
+		MaxPrecision:    newStats(),
+		MinPrecision:    newStats(),
+		MeanDelta:       newStats(),
+		MeanPrecision:   newStats(),
+		MedianDelta:     newStats(),
+		MedianPrecision: newStats(),
+	}
+}
 
-		have, _ := ct1.Message.Float64()
-		want, _ := tmp.Float64()
+func newStats() ckks.Stats {
+	return ckks.Stats{new(big.Float), new(big.Float), new(big.Float)}
+}
 
-		require.InDelta(t, want, have, delta)
+func testKeySwitching(tc testContext, t *testing.T) {
 
-		have = est.Std(ct1)
+	t.Run("Rotate/sk", func(t *testing.T) {
 
-		tmp = MulSTD(est.N, ct1.Noise[1], stdSk)
-		tmp = AddSTD(tmp, ct1.Noise[0])
+		statsHave := newPrecisionStats()
+		statsWant := newPrecisionStats()
 
-		want, _ = tmp.Float64()
-		want = math.Log2(want)
+		d := 8
 
-		require.InDelta(t, want, have, delta)
+		gk := tc.kgen.GenGaloisKeyNew(tc.params.GaloisElement(1), tc.sk)
+
+		evk := rlwe.NewMemEvaluationKeySet(nil, gk)
+
+		eval := tc.evaluator.WithKey(evk)
+
+		for w := 0; w < d; w++ {
+
+			values, el, _, ct := newTestVector(tc, tc.sk, -1, 1)
+
+			RunTimed("estimator", func() {
+				el.Rotate(1)
+				el.Decrypt()
+				el.Normalize()
+			})
+
+			RunTimed("encrypted", func() {
+				require.NoError(t, eval.Rotate(ct, 1, ct))
+			})
+
+			utils.RotateSliceInPlace(values, 1)
+
+			pWant := hefloat.GetPrecisionStats(tc.params, tc.encoder, nil, values, el.Value[0], 0, false)
+			pHave := hefloat.GetPrecisionStats(tc.params, tc.encoder, tc.decryptor, values, ct, 0, false)
+
+			addStats(&statsWant, &pWant, &statsWant)
+			addStats(&statsHave, &pHave, &statsHave)
+		}
+
+		statsDiv(&statsWant, new(big.Float).SetInt64(int64(d)))
+		statsDiv(&statsHave, new(big.Float).SetInt64(int64(d)))
+
+		fmt.Println(statsWant.String())
+		fmt.Println(statsHave.String())
 	})
+}
 
-	t.Run("Add/Ct/Ct", func(t *testing.T) {
+func testChebyshevPowers(tc testContext, t *testing.T) {
 
-		ct0 := NewCiphertextPK(NewPlaintext(ptStd, math.Sqrt(1/12.0), level))
-		ct1 := NewCiphertextPK(NewPlaintext(ptStd, math.Sqrt(1/12.0), level))
+	t.Run("Chebyshev512Power/sk", func(t *testing.T) {
 
-		ct2 := est.Add(ct0, ct1)
+		statsHave := newPrecisionStats()
+		statsWant := newPrecisionStats()
 
-		tmp := AddSTD(ct0.Message, ct1.Message)
+		d := 16
 
-		have, _ := ct2.Message.Float64()
-		want, _ := tmp.Float64()
+		for w := 0; w < d; w++ {
 
-		require.InDelta(t, want, have, delta)
+			values, el, _, ct := newTestVector(tc, tc.sk, -1, 1)
 
-		have = est.Std(ct2)
+			n := 11
 
-		tmp = MulSTD(est.N, ct2.Noise[1], stdSk)
-		tmp = AddSTD(tmp, ct2.Noise[0])
+			RunProfiled(func() {
+				RunTimed("estimator", func() {
+					pb := estimator.NewPowerBasis(el, bignum.Chebyshev)
+					pb.GenPower(1<<n, false)
+					el = *pb.Value[1<<n]
+					el.Decrypt()
+					el.Normalize()
+				})
+			})
 
-		want, _ = tmp.Float64()
-		want = math.Log2(want)
+			RunTimed("encrypted", func() {
+				eval := tc.evaluator
+				pb := hefloat.NewPowerBasis(ct, bignum.Chebyshev)
+				if err := pb.GenPower(1<<n, false, eval); err != nil{
+					panic(err)
+				}
+				ct = pb.Value[1<<n]
+			})
 
-		require.InDelta(t, want, have, delta)
-	})
+			mul := bignum.NewComplexMultiplier().Mul
 
-	t.Run("Mul/Pt/Pt", func(t *testing.T) {
-
-		pt0 := NewPlaintext(ptStd, math.Sqrt(1/12.0), level)
-		pt1 := NewPlaintext(ptStd, math.Sqrt(1/12.0), level)
-
-		pt2 := est.Mul(pt0, pt1)
-
-		tmp := MulSTD(est.N, pt0.Message, pt1.Message)
-
-		have, _ := pt2.Message.Float64()
-		want, _ := tmp.Float64()
-
-		tmp = MulSTD(est.N, pt0.Noise[0], pt1.Message)
-		tmp = AddSTD(tmp, MulSTD(est.N, pt0.Message, pt1.Noise[0]))
-
-		have = est.Std(pt2)
-
-		want, _ = tmp.Float64()
-		want = math.Log2(want)
-
-		require.InDelta(t, want, have, delta)
-	})
-
-	t.Run("Mul/Ct/Pt", func(t *testing.T) {
-
-		// EMPIRICALLY VERIFIED
-
-		pt0 := NewPlaintext(ptStd, math.Sqrt(1/12.0), level)
-		ct1 := NewCiphertextPK(NewPlaintext(ptStd, math.Sqrt(1/12.0), level))
-
-		ct2 := est.Mul(pt0, ct1)
-
-		tmp := MulSTD(est.N, pt0.Message, ct1.Message)
-
-		have, _ := ct2.Message.Float64()
-		want, _ := tmp.Float64()
-
-		tmp0 := MulSTD(est.N, pt0.Noise[0], ct1.Message)
-		tmp0 = AddSTD(tmp0, MulSTD(est.N, pt0.Message, ct1.Noise[0]))
-
-		tmp1 := MulSTD(est.N, pt0.Noise[0], ct1.Noise[1])
-		tmp1 = AddSTD(tmp1, MulSTD(est.N, pt0.Message, ct1.Noise[1]))
-
-		tmp = MulSTD(est.N, tmp1, stdSk)
-		tmp = AddSTD(tmp0, tmp)
-
-		have = est.Std(ct2)
-
-		want, _ = tmp.Float64()
-		want = math.Log2(want)
-
-		t.Log(have)
-		t.Log(want)
-
-		require.InDelta(t, want, have, delta)
-	})
-
-	t.Run("Mul/Ct/Ct", func(t *testing.T) {
-
-		// EMPIRICALLY VERIFIED
-		ct := NewCiphertextPK(NewPlaintext(ptStd, 0, level))
-
-		t.Log(ptStd)
-
-		t.Log(est.Std(ct), ct.Message)
-
-		var err error
-
-		for i := 0; i < level; i++ {
-			ct = est.Mul(ct, NewPlaintext(ptStd, 0, level))
-			ct = est.Relinearize(ct)
-			if ct, err = est.Rescale(ct); err != nil {
-				t.Fatal(err)
+			for k := 0; k < n; k++ {
+				for i := range values {
+					mul(values[i], values[i], values[i])
+					values[i].Add(values[i], values[i])
+					values[i].Add(values[i], &bignum.Complex{estimator.NewFloat(-1), estimator.NewFloat(0)})
+				}
 			}
-			t.Log(est.Std(ct), ct.Message)
+
+			pWant := hefloat.GetPrecisionStats(tc.params, tc.encoder, nil, values, el.Value[0], 0, false)
+			pHave := hefloat.GetPrecisionStats(tc.params, tc.encoder, tc.decryptor, values, ct, 0, false)
+
+			addStats(&statsWant, &pWant, &statsWant)
+			addStats(&statsHave, &pHave, &statsHave)
 		}
 
+		statsDiv(&statsWant, new(big.Float).SetInt64(int64(d)))
+		statsDiv(&statsHave, new(big.Float).SetInt64(int64(d)))
+
+		fmt.Println(statsWant.String())
+		fmt.Println(statsHave.String())
 	})
+}
 
-	t.Run("Rescale", func(t *testing.T) {
+func statsDiv(a *ckks.PrecisionStats, b *big.Float) {
+	a.MaxDelta.Real.Quo(a.MaxDelta.Real, b)
+	a.MaxDelta.Imag.Quo(a.MaxDelta.Imag, b)
+	a.MaxDelta.L2.Quo(a.MaxDelta.L2, b)
 
-		// EMPIRICALLY VERIFIED
+	a.MinDelta.Real.Quo(a.MinDelta.Real, b)
+	a.MinDelta.Imag.Quo(a.MinDelta.Imag, b)
+	a.MinDelta.L2.Quo(a.MinDelta.L2, b)
 
-		level := 1
+	a.MaxPrecision.Real.Quo(a.MaxPrecision.Real, b)
+	a.MaxPrecision.Imag.Quo(a.MaxPrecision.Imag, b)
+	a.MaxPrecision.L2.Quo(a.MaxPrecision.L2, b)
 
-		var err error
+	a.MinPrecision.Real.Quo(a.MinPrecision.Real, b)
+	a.MinPrecision.Imag.Quo(a.MinPrecision.Imag, b)
+	a.MinPrecision.L2.Quo(a.MinPrecision.L2, b)
 
-		var msg float64 = 1 << 45
-		var e float64 = 1 << 46
-		var q = float64(Q[level])
+	a.MeanDelta.Real.Quo(a.MeanDelta.Real, b)
+	a.MeanDelta.Imag.Quo(a.MeanDelta.Imag, b)
+	a.MeanDelta.L2.Quo(a.MeanDelta.L2, b)
 
-		elem := Element{
-			Level:   level,
-			Message: NewFloat(msg),
-			Noise:   []*big.Float{NewFloat(e), NewFloat(e), NewFloat(e)},
-		}
+	a.MeanPrecision.Real.Quo(a.MeanPrecision.Real, b)
+	a.MeanPrecision.Imag.Quo(a.MeanPrecision.Imag, b)
+	a.MeanPrecision.L2.Quo(a.MeanPrecision.L2, b)
 
-		if elem, err = est.Rescale(elem); err != nil {
-			t.Fatal(err)
-		}
+	a.MedianDelta.Real.Quo(a.MedianDelta.Real, b)
+	a.MedianDelta.Imag.Quo(a.MedianDelta.Imag, b)
+	a.MedianDelta.L2.Quo(a.MedianDelta.L2, b)
 
-		have := est.Std(elem)
-		want := math.Log2(math.Sqrt((e/q*e/q + 1/12.0) + ((e/q*e/q+1/12.0)+(e/q*e/q+1/12.0)*float64(H))*float64(H)))
+	a.MedianPrecision.Real.Quo(a.MedianPrecision.Real, b)
+	a.MedianPrecision.Imag.Quo(a.MedianPrecision.Imag, b)
+	a.MedianPrecision.L2.Quo(a.MedianPrecision.L2, b)
+}
 
-		//require.InDelta(t, elem.Message, msg/q, delta)
-		require.Equal(t, elem.Level, level-1)
-		require.InDelta(t, want, have, delta)
-	})
+func addStats(a, b, c *ckks.PrecisionStats) {
+	c.MaxDelta.Real.Add(a.MaxDelta.Real, b.MaxDelta.Real)
+	c.MaxDelta.Imag.Add(a.MaxDelta.Imag, b.MaxDelta.Imag)
+	c.MaxDelta.L2.Add(a.MaxDelta.L2, b.MaxDelta.L2)
 
-	t.Run("LinearTransform", func(t *testing.T) {
+	c.MinDelta.Real.Add(a.MinDelta.Real, b.MinDelta.Real)
+	c.MinDelta.Imag.Add(a.MinDelta.Imag, b.MinDelta.Imag)
+	c.MinDelta.L2.Add(a.MinDelta.L2, b.MinDelta.L2)
 
-		// EMPIRICALLY VERIFIED (UP TO THERE) for CT-SK & CT-PK
+	c.MaxPrecision.Real.Add(a.MaxPrecision.Real, b.MaxPrecision.Real)
+	c.MaxPrecision.Imag.Add(a.MaxPrecision.Imag, b.MaxPrecision.Imag)
+	c.MaxPrecision.L2.Add(a.MaxPrecision.L2, b.MaxPrecision.L2)
 
-		diags := []map[int][2]float64{
-			map[int][2]float64{
-				0:  {0.00390626732046525, 0},
-				1:  {0.00365389161348000, 0},
-				2:  {0.00338292536788323, 0},
-				3:  {0.00308802841010419, 0},
-				4:  {0.00276214866848703, 0},
-				5:  {0.00239205905698830, 0},
-				6:  {0.00195307507231700, 0},
-				7:  {0.00138094268654370, 0},
-				-7: {0.00138107715173799, 0},
-				-6: {0.00195313989560961, 0},
-				-5: {0.00239209373419969, 0},
-				-4: {0.00276215569281487, 0},
-				-3: {0.00308818469796449, 0},
-				-2: {0.00338291628098494, 0},
-				-1: {0.00365397976622493, 0},
-			},
-			map[int][2]float64{
-				0:     {0.00024414102316630370, 0},
-				2048:  {0.00024414233423388263, 0},
-				4096:  {0.00024414206118669165, 0},
-				6144:  {0.00024414240022099044, 0},
-				8192:  {0.00024414248708016384, 0},
-				10240: {0.00024414247911935246, 0},
-				12288: {0.00024414180919533906, 0},
-				14336: {0.00024414248329247690, 0},
-				16384: {0.00024414246898360015, 0},
-				18432: {0.00024414239107164240, 0},
-				20480: {0.00024414226649732900, 0},
-				22528: {0.00024414233600733267, 0},
-				24576: {0.00024414232259683394, 0},
-				26624: {0.00024414248311350925, 0},
-				28672: {0.00024414158296428044, 0},
-				30720: {0.00024414248708458494, 0},
-			},
-		}
+	c.MinPrecision.Real.Add(a.MinPrecision.Real, b.MinPrecision.Real)
+	c.MinPrecision.Imag.Add(a.MinPrecision.Imag, b.MinPrecision.Imag)
+	c.MinPrecision.L2.Add(a.MinPrecision.L2, b.MinPrecision.L2)
 
-		level := 4
+	c.MeanDelta.Real.Add(a.MeanDelta.Real, b.MeanDelta.Real)
+	c.MeanDelta.Imag.Add(a.MeanDelta.Imag, b.MeanDelta.Imag)
+	c.MeanDelta.L2.Add(a.MeanDelta.L2, b.MeanDelta.L2)
 
-		LT := NewLinearTransform(diags[0], Q[level], level, LogN-1, 2)
+	c.MeanPrecision.Real.Add(a.MeanPrecision.Real, b.MeanPrecision.Real)
+	c.MeanPrecision.Imag.Add(a.MeanPrecision.Imag, b.MeanPrecision.Imag)
+	c.MeanPrecision.L2.Add(a.MeanPrecision.L2, b.MeanPrecision.L2)
 
-		ct := NewCiphertextSK(NewPlaintext(ptStd, nil, level))
+	c.MedianDelta.Real.Add(a.MedianDelta.Real, b.MedianDelta.Real)
+	c.MedianDelta.Imag.Add(a.MedianDelta.Imag, b.MedianDelta.Imag)
+	c.MedianDelta.L2.Add(a.MedianDelta.L2, b.MedianDelta.L2)
 
-		t.Log(est.Std(ct))
+	c.MedianPrecision.Real.Add(a.MedianPrecision.Real, b.MedianPrecision.Real)
+	c.MedianPrecision.Imag.Add(a.MedianPrecision.Imag, b.MedianPrecision.Imag)
+	c.MedianPrecision.L2.Add(a.MedianPrecision.L2, b.MedianPrecision.L2)
+}
 
-		ct = est.LinearTransform(ct, LT)
+func TestEncryptPK(t *testing.T) {
 
-		t.Log(est.Std(ct))
+}
 
-	})
+func RunTimed(msg string, f func()) {
+	now := time.Now()
+	f()
+	fmt.Printf("%s: %s\n", msg, time.Since(now))
+}
 
-	t.Run("KeySwitchHoisted", func(t *testing.T) {
+func RunProfiled(f func()) {
+	file, err := os.Create("cpu.prof")
 
-		// EMPIRICALLY VERIFIED FOR CT-SK & CT-PK
+	if err != nil {
+		panic(err)
+	}
 
-		ct := NewCiphertextPK(NewPlaintext(nil, nil, level))
+	if err := pprof.StartCPUProfile(file); err != nil {
+		panic(err)
+	}
 
-		ct = est.KeySwitchLazy(ct)
+	f()
 
-		have := est.Std(ct)
-
-		t.Log(have)
-
-	})
-
-	t.Run("PowerBasis", func(t *testing.T) {
-
-		ct := NewCiphertextPK(NewPlaintext(ptStd, 0, level))
-
-		pb := NewPowerBasis(ct, polynomial.Chebyshev)
-
-		var err error
-		for i := 2; i < 32; i <<= 1 {
-			if err = pb.GenPower(i, false, est); err != nil {
-				t.Fatal(err)
-			}
-		}
-
-		for i := 3; i < 8; i++ {
-			if err = pb.GenPower(i, false, est); err != nil {
-				t.Fatal(err)
-			}
-		}
-
-		for i := 0; i < 64; i++ {
-			if p, ok := pb.Value[i]; ok {
-				t.Log(i, est.Std(p), p.Level)
-			}
-		}
-	})
+	pprof.StopCPUProfile()
+	file.Close()
 }

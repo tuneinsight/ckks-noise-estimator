@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"math/big"
 
-	"github.com/tuneinsight/lattigo/v4/rlwe"
+	"github.com/tuneinsight/lattigo/v4/core/rlwe"
 	"github.com/tuneinsight/lattigo/v4/utils"
 	"github.com/tuneinsight/lattigo/v4/utils/bignum"
 )
@@ -102,15 +102,22 @@ func (p *Element) Mul(op0 *Element, op1 rlwe.Operand) *Element {
 
 		bComplex := bignum.ToComplex(op1, p.Value[0][0].Prec())
 
-		for i := 0; i < op0.Degree; i++ {
+		if !bComplex.IsInt(){
+			bComplex[0].Mul(bComplex[0], p.Q[p.Level])
+			bComplex[1].Mul(bComplex[1], p.Q[p.Level])
+			p.Scale = *p.Scale.Mul(&op0.Scale, p.Q[p.Level])
+		}else{
+			p.Scale = op0.Scale
+		}
+
+		for i := 0; i < op0.Degree+1; i++ {
 			m0 := op0.Value[i]
 			m2 := p.Value[i]
 			for i := range m2 {
 				mul(m0[i], bComplex, m2[i])
 			}
 		}
-
-		p.Scale = *p.Scale.Mul(&op0.Scale, p.Q[p.Level])
+		
 		p.Degree = op0.Degree
 
 	default:

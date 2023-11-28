@@ -4,8 +4,8 @@ import (
 	"fmt"
 	"math/big"
 
-	"github.com/tuneinsight/lattigo/v4/schemes/ckks"
-	"github.com/tuneinsight/lattigo/v4/utils/bignum"
+	"github.com/tuneinsight/lattigo/v5/schemes/ckks"
+	"github.com/tuneinsight/lattigo/v5/utils/bignum"
 )
 
 const (

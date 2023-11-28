@@ -3,8 +3,8 @@ module github.com/tuneinsight/ckks-bootstrapping-precision
 go 1.21.1
 
 require (
-	github.com/stretchr/testify v1.8.0
-	github.com/tuneinsight/lattigo/v4 v4.1.1-0.20231110093343-08c364c2d9e7
+	github.com/stretchr/testify v1.8.4
+	github.com/tuneinsight/lattigo/v5 v5.0.1
 )
 
 require (

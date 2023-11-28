@@ -4,9 +4,9 @@ import (
 	"fmt"
 	"math/big"
 
-	"github.com/tuneinsight/lattigo/v4/core/rlwe"
-	"github.com/tuneinsight/lattigo/v4/utils"
-	"github.com/tuneinsight/lattigo/v4/utils/bignum"
+	"github.com/tuneinsight/lattigo/v5/core/rlwe"
+	"github.com/tuneinsight/lattigo/v5/utils"
+	"github.com/tuneinsight/lattigo/v5/utils/bignum"
 )
 
 // Add adds op0 to op1 and writes the result on p, also returns p.
@@ -19,12 +19,47 @@ func (p *Element) Add(op0 *Element, op1 rlwe.Operand) *Element {
 			panic("invalid input dimensions: do not match receiver dimension")
 		}
 
+		var tmp0, tmp1 *Element
+
+		switch op0.Scale.Cmp(op1.Scale){
+		case -1:
+
+			ratio := op1.Scale.Div(op0.Scale)
+			// Only scales up if int(ratio) >= 2
+			if ratio.Float64() >= 2.0 {
+				tmp0 = op0.CopyNew()
+				tmp0.Mul(tmp0, ratio.BigInt())
+				p.Scale = op1.Scale
+			}else{
+				tmp0 = op0
+			}
+
+			tmp1 = op1
+
+		case 0:
+			tmp0 = op0
+			tmp1 = op1
+			p.Scale = tmp0.Scale
+		case 1:
+			ratio := op0.Scale.Div(op1.Scale)
+			// Only scales up if int(ratio) >= 2
+			if ratio.Float64() >= 2.0 {
+				tmp1 = op1.CopyNew()
+				tmp1.Mul(tmp1, ratio.BigInt())
+				p.Scale = op0.Scale
+			}else{
+				tmp1 = op1
+			}
+
+			tmp0 = op0
+		}
+
 		p.Level = utils.Min(op0.Level, op1.Level)
 		p.Degree = utils.Max(op0.Degree, op1.Degree)
 
 		for i := 0; i < p.Degree+1; i++ {
-			m0 := op0.Value[i]
-			m1 := op1.Value[i]
+			m0 := tmp0.Value[i]
+			m1 := tmp1.Value[i]
 			m2 := p.Value[i]
 			for j := range m2 {
 				m2[j].Add(m0[j], m1[j])
@@ -38,11 +73,93 @@ func (p *Element) Add(op0 *Element, op1 rlwe.Operand) *Element {
 
 		bComplex := bignum.ToComplex(op1, prec)
 
-		bComplex[0].Mul(bComplex[0], &p.Scale)
-		bComplex[1].Mul(bComplex[1], &p.Scale)
+		bComplex[0].Mul(bComplex[0], &p.Scale.Value)
+		bComplex[1].Mul(bComplex[1], &p.Scale.Value)
 
 		for i := range m2 {
 			m2[i].Add(m0[i], bComplex)
+		}
+
+	default:
+		panic(fmt.Errorf("invalid op1.(type): must be *Element, complex128, float64, int, int64, uint, uint64, *big.Int, *big.Float, *bignum.Complex, []complex128, []float64, []*big.Float or []*bignum.Complex, but is %T", op1))
+	}
+
+	return p
+}
+
+// Sub subtracts op0 to op1 and writes the result on p, also returns p.
+func (p *Element) Sub(op0 *Element, op1 rlwe.Operand) *Element {
+
+	switch op1 := op1.(type) {
+	case *Element:
+
+		if len(op0.Value) != len(p.Value) || len(op1.Value) != len(p.Value) {
+			panic("invalid input dimensions: do not match receiver dimension")
+		}
+
+		var tmp0, tmp1 *Element
+
+		switch op0.Scale.Cmp(op1.Scale){
+		case -1:
+
+			ratio := op1.Scale.Div(op0.Scale)
+
+			// Only scales up if int(ratio) >= 2
+			if ratio.Float64() >= 2.0 {
+				tmp0 = op0.CopyNew()
+				tmp0.Mul(tmp0, ratio.BigInt())
+				tmp0.Scale = op1.Scale
+				p.Scale = op1.Scale
+			}else{
+				tmp0 = op0
+			}
+
+			tmp1 = op1
+
+		case 0:
+			tmp0 = op0
+			tmp1 = op1
+			p.Scale = tmp0.Scale
+		case 1:
+			ratio := op0.Scale.Div(op1.Scale)
+
+			// Only scales up if int(ratio) >= 2
+			if ratio.Float64() >= 2.0 {
+				tmp1 = op1.CopyNew()
+				tmp1.Mul(tmp1, ratio.BigInt())
+				tmp1.Scale = op0.Scale
+				p.Scale = op0.Scale
+			}else{
+				tmp1 = op1
+			}
+
+			tmp0 = op0
+		}
+
+		p.Level = utils.Min(op0.Level, op1.Level)
+		p.Degree = utils.Max(op0.Degree, op1.Degree)
+
+		for i := 0; i < p.Degree+1; i++ {
+			m0 := tmp0.Value[i]
+			m1 := tmp1.Value[i]
+			m2 := p.Value[i]
+			for j := range m2 {
+				m2[j].Sub(m0[j], m1[j])
+			}
+		}
+
+	case complex128, float64, int, int64, uint, *big.Int, *big.Float, *bignum.Complex:
+
+		m0 := op0.Value[0]
+		m2 := p.Value[0]
+
+		bComplex := bignum.ToComplex(op1, prec)
+
+		bComplex[0].Mul(bComplex[0], &p.Scale.Value)
+		bComplex[1].Mul(bComplex[1], &p.Scale.Value)
+
+		for i := range m2 {
+			m2[i].Sub(m0[i], bComplex)
 		}
 
 	default:
@@ -94,7 +211,7 @@ func (p *Element) Mul(op0 *Element, op1 rlwe.Operand) *Element {
 			mul(m00[i], m10[i], m20[i])
 		}
 
-		p.Scale = *p.Scale.Mul(&op0.Scale, &op1.Scale)
+		p.Scale = op0.Scale.Mul(op1.Scale)
 		p.Level = utils.Min(op0.Level, op1.Level)
 		p.Degree = op0.Degree + op1.Degree
 
@@ -105,7 +222,7 @@ func (p *Element) Mul(op0 *Element, op1 rlwe.Operand) *Element {
 		if !bComplex.IsInt(){
 			bComplex[0].Mul(bComplex[0], p.Q[p.Level])
 			bComplex[1].Mul(bComplex[1], p.Q[p.Level])
-			p.Scale = *p.Scale.Mul(&op0.Scale, p.Q[p.Level])
+			p.Scale = op0.Scale.Mul(rlwe.NewScale(p.Q[p.Level]))
 		}else{
 			p.Scale = op0.Scale
 		}
@@ -120,6 +237,144 @@ func (p *Element) Mul(op0 *Element, op1 rlwe.Operand) *Element {
 		
 		p.Degree = op0.Degree
 
+	default:
+		panic(fmt.Errorf("invalid op1.(type): must be *Element, complex128, float64, int, int64, uint, uint64, *big.Int, *big.Float, *bignum.Complex, []complex128, []float64, []*big.Float or []*bignum.Complex, but is %T", op1))
+	}
+
+	return p
+}
+
+func (p *Element) MulThenAdd(op0 *Element, op1 rlwe.Operand) *Element {
+
+	mul := bignum.NewComplexMultiplier().Mul
+
+	switch op1 := op1.(type) {
+	case *Element:
+
+		if len(op0.Value) != len(p.Value) || len(op1.Value) != len(p.Value) {
+			panic(fmt.Errorf("invalid input dimensions: do not match receiver dimension"))
+		}
+
+		if op0.Degree+op1.Degree > 2 {
+			panic(fmt.Errorf("invalid input degree: sum cannot exceed 2"))
+		}
+
+		resScale := op0.Scale.Mul(op1.Scale)
+		if p.Scale.Cmp(resScale) == -1 {
+			ratio := resScale.Div(p.Scale)
+			// Only scales up if int(ratio) >= 2
+			if ratio.Float64() >= 2.0 {
+				p.Mul(p, &ratio.Value)
+				p.Scale = resScale
+			}
+		}
+
+		if op0.Degree == 1 && op1.Degree == 1{
+			// m0 * m1
+			m00 := op0.Value[0] // (m0 + e00)
+			e01 := op0.Value[1] // e01
+
+			m10 := op1.Value[0] // (m1 + e10)
+			e11 := op1.Value[1] // e11
+
+			m20 := p.Value[0]   // (m2 + e20)
+			e21 := p.Value[1]   // e21
+			e22 := p.Value[2] // e22
+
+			tmp := bignum.NewComplex()
+			acc := bignum.NewComplex()
+
+			for i := range m00 {
+
+				// e22 = e01 * e11
+				mul(e01[i], e11[i], acc)
+				e22[i].Add(e22[i], acc)
+
+				// (m0 + e00) * e11 + (m1 + e10) * e01
+				mul(m00[i], e11[i], tmp)
+				mul(m10[i], e01[i], acc)
+
+				e21[i].Add(e21[i], acc)
+				e21[i].Add(e21[i], tmp)
+
+				// (m0 + e00) * (m1 + e11)
+				mul(m00[i], m10[i], acc)
+				m20[i].Add(m20[i], acc)
+			}
+
+			p.Scale = op0.Scale.Mul(op1.Scale)
+			p.Level = utils.Min(op0.Level, op1.Level)
+			p.Degree = op0.Degree + op1.Degree
+
+		}else{
+
+			acc := bignum.NewComplex()
+
+			p.Degree = utils.Max(op0.Degree, op1.Degree)
+			p.Scale = op0.Scale.Mul(op1.Scale)
+			p.Level = utils.Min(op0.Level, op1.Level)
+
+			m := op1.Value[0]
+
+			for i := 0; i < p.Degree+1; i++{
+				v0 := p.Value[i]
+				v1 := op0.Value[i]
+
+				for j := range m{
+					mul(v1[j], m[j], acc)
+					v0[j].Add(v0[j], acc)
+				}
+			}
+		}
+
+	case complex128, float64, int, int64, uint, *big.Int, *big.Float, *bignum.Complex:
+
+		p.Degree = utils.Max(p.Degree, op0.Degree)
+		p.Level = utils.Min(p.Level, op0.Level)
+
+		bComplex := bignum.ToComplex(op1, p.Value[0][0].Prec())
+
+		var scaleRLWE rlwe.Scale
+
+		// If op0 and opOut scales are identical, but the op1 is not a Gaussian integer then multiplies opOut by scaleRLWE.
+		// This ensures noiseless addition with opOut = scaleRLWE * opOut + op0 * round(scalar * scaleRLWE).
+		if cmp := op0.Scale.Cmp(p.Scale); cmp == 0 {
+
+			if bComplex.IsInt() {
+				scaleRLWE = rlwe.NewScale(1)
+			} else {
+				scaleRLWE = rlwe.NewScale(p.Q[p.Level])
+
+				for i := 1; i < p.Parameters.Parameters.LevelsConsumedPerRescaling(); i++ {
+					scaleRLWE = scaleRLWE.Mul(rlwe.NewScale(p.Q[p.Level-i]))
+				}
+
+				scaleInt := new(big.Int)
+				scaleRLWE.Value.Int(scaleInt)
+				p.Mul(p, scaleInt)
+				p.Scale = p.Scale.Mul(scaleRLWE)
+			}
+
+		} else if cmp == -1 { // opOut.Scale > op0.Scale then the scaling factor for op1 becomes the quotient between the two scales
+			scaleRLWE = p.Scale.Div(op0.Scale)
+		} else {
+			panic(fmt.Errorf("cannot MulThenAdd: op0.Scale > opOut.Scale is not supported"))
+		}
+
+		bComplex[0].Mul(bComplex[0], &scaleRLWE.Value)
+		bComplex[1].Mul(bComplex[1], &scaleRLWE.Value)
+
+		acc := bignum.NewComplex()
+
+		for i := 0; i < p.Degree+1; i++ {
+			m0 := op0.Value[i]
+			m2 := p.Value[i]
+			for i := range m2 {
+				mul(m0[i], bComplex, acc)
+				m2[i].Add(m2[i], acc)
+			}
+		}
+		
 	default:
 		panic(fmt.Errorf("invalid op1.(type): must be *Element, complex128, float64, int, int64, uint, uint64, *big.Int, *big.Float, *bignum.Complex, []complex128, []float64, []*big.Float or []*bignum.Complex, but is %T", op1))
 	}
@@ -191,7 +446,7 @@ func (p *Element) Rescale() {
 
 	Q := p.Q[p.Level]
 
-	p.Scale = *p.Scale.Quo(&p.Scale, Q)
+	p.Scale = p.Scale.Div(rlwe.NewScale(Q))
 	p.Level--
 
 	p.DivideAndAddRoundingNoise(Q)

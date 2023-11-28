@@ -5,15 +5,17 @@ import (
 	"math/rand"
 	"time"
 
-	"github.com/tuneinsight/lattigo/v4/he/hefloat"
-	"github.com/tuneinsight/lattigo/v4/utils/bignum"
+	"github.com/tuneinsight/lattigo/v5/core/rlwe"
+	"github.com/tuneinsight/lattigo/v5/he/hefloat"
+	"github.com/tuneinsight/lattigo/v5/utils/bignum"
 )
 
 type Parameters struct {
+	Parameters hefloat.Parameters
 	Encoder
 	LogN      int
 	Sigma     float64
-	Scale     big.Float
+	Scale     rlwe.Scale
 	H         int
 	Q         []*big.Float
 	P         *big.Float
@@ -78,6 +80,7 @@ func NewParameters(p hefloat.Parameters) Parameters {
 	}
 
 	return Parameters{
+		Parameters:p,
 		LogN:    p.LogN(),
 		Sigma:   p.NoiseFreshSK(),
 		H:       H,
@@ -85,7 +88,7 @@ func NewParameters(p hefloat.Parameters) Parameters {
 		Q:       Qi,
 		P:       Pi,
 		LevelP:  len(P) - 1,
-		Scale:   p.DefaultScale().Value,
+		Scale:   p.DefaultScale(),
 		Sk:      [][]*bignum.Complex{sk, sk2},
 	}
 }
@@ -106,6 +109,6 @@ func (p Parameters) MaxLevel() int {
 	return len(p.Q) - 1
 }
 
-func (p Parameters) DefaultScale() big.Float {
+func (p Parameters) DefaultScale() rlwe.Scale {
 	return p.Scale
 }

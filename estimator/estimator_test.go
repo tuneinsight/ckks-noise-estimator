@@ -7,15 +7,16 @@ import (
 	"runtime/pprof"
 	"testing"
 	"time"
+	"math"
 
 	"github.com/stretchr/testify/require"
 	"github.com/tuneinsight/ckks-bootstrapping-precision/estimator"
-	"github.com/tuneinsight/lattigo/v4/he/hefloat"
-	"github.com/tuneinsight/lattigo/v4/schemes/ckks"
-	"github.com/tuneinsight/lattigo/v4/core/rlwe"
-	"github.com/tuneinsight/lattigo/v4/utils"
-	"github.com/tuneinsight/lattigo/v4/utils/bignum"
-	"github.com/tuneinsight/lattigo/v4/utils/sampling"
+	"github.com/tuneinsight/lattigo/v5/he/hefloat"
+	"github.com/tuneinsight/lattigo/v5/schemes/ckks"
+	"github.com/tuneinsight/lattigo/v5/core/rlwe"
+	"github.com/tuneinsight/lattigo/v5/utils"
+	"github.com/tuneinsight/lattigo/v5/utils/bignum"
+	"github.com/tuneinsight/lattigo/v5/utils/sampling"
 )
 
 type testContext struct {
@@ -62,6 +63,9 @@ func newTestVector(tc testContext, key rlwe.EncryptionKey, a, b complex128) (val
 		}
 	}
 
+	values[0][0].SetFloat64(1)
+	values[0][1].SetFloat64(0)
+
 	el = estimator.NewElement(tc.estimator, values, 1, tc.estimator.DefaultScale())
 	el.AddEncodingNoise()
 
@@ -75,6 +79,8 @@ func newTestVector(tc testContext, key rlwe.EncryptionKey, a, b complex128) (val
 	case *rlwe.PublicKey:
 		ct, _ = rlwe.NewEncryptor(tc.params, key).EncryptNew(pt)
 		el.AddEncryptionNoisePk()
+	default:
+		panic("INVALID ENCRYPION KEY")
 	}
 
 	return
@@ -83,10 +89,10 @@ func newTestVector(tc testContext, key rlwe.EncryptionKey, a, b complex128) (val
 func TestEstimator(t *testing.T) {
 
 	params, err := hefloat.NewParametersFromLiteral(hefloat.ParametersLiteral{
-		LogN:            12,
-		LogQ:            []int{60, 60, 60, 60, 60, 60, 60, 60, 60, 60, 60, 60},
-		LogP:            []int{61, 61},
-		LogDefaultScale: 60,
+		LogN:            10,
+		LogQ:            []int{55, 45, 45, 45, 45, 45, 45, 45},
+		LogP:            []int{60},
+		LogDefaultScale: 45,
 	})
 
 	if err != nil {
@@ -95,8 +101,9 @@ func TestEstimator(t *testing.T) {
 
 	tc := newTestContext(params)
 
-	testChebyshevPowers(tc, t)
-	testKeySwitching(tc, t)
+	//testChebyshevPowers(tc, t)
+	//testKeySwitching(tc, t)
+	testChebyshevPolynomialEvaluation(tc, t)
 }
 
 func newPrecisionStats() ckks.PrecisionStats {
@@ -219,6 +226,147 @@ func testChebyshevPowers(tc testContext, t *testing.T) {
 		fmt.Println(statsWant.String())
 		fmt.Println(statsHave.String())
 	})
+
+	t.Run("Chebyshev512Power/pk", func(t *testing.T) {
+
+		statsHave := newPrecisionStats()
+		statsWant := newPrecisionStats()
+
+		d := 16
+
+		for w := 0; w < d; w++ {
+
+			values, el, _, ct := newTestVector(tc, tc.pk, -1, 1)
+
+			n := 11
+
+			RunProfiled(func() {
+				RunTimed("estimator", func() {
+					pb := estimator.NewPowerBasis(el, bignum.Chebyshev)
+					pb.GenPower(1<<n, false)
+					el = *pb.Value[1<<n]
+					el.Decrypt()
+					el.Normalize()
+				})
+			})
+
+			RunTimed("encrypted", func() {
+				eval := tc.evaluator
+				pb := hefloat.NewPowerBasis(ct, bignum.Chebyshev)
+				if err := pb.GenPower(1<<n, false, eval); err != nil{
+					panic(err)
+				}
+				ct = pb.Value[1<<n]
+			})
+
+			mul := bignum.NewComplexMultiplier().Mul
+
+			for k := 0; k < n; k++ {
+				for i := range values {
+					mul(values[i], values[i], values[i])
+					values[i].Add(values[i], values[i])
+					values[i].Add(values[i], &bignum.Complex{estimator.NewFloat(-1), estimator.NewFloat(0)})
+				}
+			}
+
+			pWant := hefloat.GetPrecisionStats(tc.params, tc.encoder, nil, values, el.Value[0], 0, false)
+			pHave := hefloat.GetPrecisionStats(tc.params, tc.encoder, tc.decryptor, values, ct, 0, false)
+
+			addStats(&statsWant, &pWant, &statsWant)
+			addStats(&statsHave, &pHave, &statsHave)
+		}
+
+		statsDiv(&statsWant, new(big.Float).SetInt64(int64(d)))
+		statsDiv(&statsHave, new(big.Float).SetInt64(int64(d)))
+
+		fmt.Println(statsWant.String())
+		fmt.Println(statsHave.String())
+	})
+}
+
+func testChebyshevPolynomialEvaluation(tc testContext, t *testing.T) {
+
+	sigmoid := func(x float64) (y float64) {
+		return 1 / (math.Exp(-x) + 1)
+	}
+
+	poly := hefloat.NewPolynomial(GetChebyshevPoly(1, 127, sigmoid))
+
+	t.Run("ChebyshevPolynomialEvaluation/sk", func(t *testing.T) {
+
+		statsHave := newPrecisionStats()
+		statsWant := newPrecisionStats()
+
+		d := 1
+
+		for w := 0; w < d; w++ {
+
+			values, el, _, ct := newTestVector(tc, tc.sk, -1, 1)
+
+			RunProfiled(func() {
+				RunTimed("estimator", func() {
+					var err error
+					var tmp *estimator.	Element
+					if tmp, err = el.EvaluatePolynomial(poly, el.Scale); err != nil{
+						t.Fatal(err)
+					}
+					el = *tmp
+					el.Decrypt()
+					el.Normalize()
+				})
+			})
+
+			RunTimed("encrypted", func() {
+				polyEval := hefloat.NewPolynomialEvaluator(tc.params, tc.evaluator)
+				var err error
+				if ct, err = polyEval.Evaluate(ct, poly, ct.Scale); err != nil {
+					t.Fatal(err)
+				}
+			})
+
+			fmt.Println(values[0])
+
+			for i := range values {
+				values[i] = poly.Evaluate(values[i])
+			}
+
+			fmt.Println(values[0])
+			fmt.Println(el.Value[0][0])
+	
+			pWant := hefloat.GetPrecisionStats(tc.params, tc.encoder, nil, values, el.Value[0], 0, false)
+			pHave := hefloat.GetPrecisionStats(tc.params, tc.encoder, tc.decryptor, values, ct, 0, false)
+
+			addStats(&statsWant, &pWant, &statsWant)
+			addStats(&statsHave, &pHave, &statsHave)
+		}
+
+		statsDiv(&statsWant, new(big.Float).SetInt64(int64(d)))
+		statsDiv(&statsHave, new(big.Float).SetInt64(int64(d)))
+
+		fmt.Println(statsWant.String())
+		fmt.Println(statsHave.String())
+	})
+}
+
+// GetChebyshevPoly returns the Chebyshev polynomial approximation of f the
+// in the interval [-K, K] for the given degree.
+func GetChebyshevPoly(K float64, degree int, f64 func(x float64) (y float64)) bignum.Polynomial {
+
+	FBig := func(x *big.Float) (y *big.Float) {
+		xF64, _ := x.Float64()
+		return new(big.Float).SetPrec(x.Prec()).SetFloat64(f64(xF64))
+	}
+
+	var prec uint = 128
+
+	interval := bignum.Interval{
+		A:     *bignum.NewFloat(-K, prec),
+		B:     *bignum.NewFloat(K, prec),
+		Nodes: degree,
+	}
+
+	// Returns the polynomial.
+	return bignum.ChebyshevApproximation(FBig, interval)
 }
 
 func statsDiv(a *ckks.PrecisionStats, b *big.Float) {

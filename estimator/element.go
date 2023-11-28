@@ -3,16 +3,17 @@ package estimator
 import (
 	"math/big"
 
-	"github.com/tuneinsight/lattigo/v4/schemes/ckks"
-	"github.com/tuneinsight/lattigo/v4/utils"
-	"github.com/tuneinsight/lattigo/v4/utils/bignum"
+	"github.com/tuneinsight/lattigo/v5/core/rlwe"
+	"github.com/tuneinsight/lattigo/v5/schemes/ckks"
+	"github.com/tuneinsight/lattigo/v5/utils"
+	"github.com/tuneinsight/lattigo/v5/utils/bignum"
 )
 
 type Element struct {
 	*Parameters
 	Degree int
 	Level  int
-	Scale  big.Float
+	Scale  rlwe.Scale
 	Value  [3][]*bignum.Complex //(m + e0, e1, e2)
 }
 
@@ -42,7 +43,7 @@ func (p Element) CopyNew() *Element {
 	}
 }
 
-func NewElement[T ckks.Float](p Parameters, v []T, Degree int, scale big.Float) Element {
+func NewElement[T ckks.Float](p Parameters, v []T, Degree int, scale rlwe.Scale) Element {
 
 	if len(v) > p.MaxSlots() {
 		panic("len(v) > p.MaxSlots()")
@@ -54,8 +55,8 @@ func NewElement[T ckks.Float](p Parameters, v []T, Degree int, scale big.Float) 
 
 	for i := range v {
 		e0[i] = bignum.ToComplex(v[i], prec)
-		e0[i][0].Mul(e0[i][0], &scale)
-		e0[i][1].Mul(e0[i][1], &scale)
+		e0[i][0].Mul(e0[i][0], &scale.Value)
+		e0[i][1].Mul(e0[i][1], &scale.Value)
 	}
 
 	for i := len(v); i < p.MaxSlots(); i++ {
@@ -161,7 +162,7 @@ func (p *Element) AddKeySwitchingNoiseRaw(eCt, sk []*bignum.Complex) {
 
 func (p *Element) Normalize() {
 	Value := p.Value[0]
-	scale := &p.Scale
+	scale := &p.Scale.Value
 	for i := range Value {
 		Value[i][0].Quo(Value[i][0], scale)
 		Value[i][1].Quo(Value[i][1], scale)

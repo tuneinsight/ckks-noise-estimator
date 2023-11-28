@@ -3,7 +3,7 @@ package estimator
 import (
 	"math"
 
-	"github.com/tuneinsight/lattigo/v4/utils/bignum"
+	"github.com/tuneinsight/lattigo/v5/utils/bignum"
 )
 
 // PowerBasis is a struct storing powers of a ciphertext.
@@ -111,7 +111,7 @@ func (p *PowerBasis) genPower(n int, lazy bool) (rescale bool) {
 			} else {
 				// Since C[0] is not stored (but rather seen as the constant 1), only recurses on c if c!= 0
 				p.GenPower(c, lazy)
-				p.Value[n].Add(p.Value[n], p.Value[c])
+				p.Value[n].Sub(p.Value[n], p.Value[c])
 			}
 		}
 

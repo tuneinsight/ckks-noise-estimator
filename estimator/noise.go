@@ -6,7 +6,7 @@ import (
 	"math/rand"
 	"time"
 
-	"github.com/tuneinsight/lattigo/v4/utils/bignum"
+	"github.com/tuneinsight/lattigo/v5/utils/bignum"
 )
 
 // Noise samples noise in R[X]/(X^N+1) according to f(), scales it by 2^-logScale and

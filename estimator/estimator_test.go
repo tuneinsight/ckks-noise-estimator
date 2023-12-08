@@ -14,6 +14,7 @@ import (
 	"github.com/tuneinsight/lattigo/v5/he/hefloat"
 	"github.com/tuneinsight/lattigo/v5/schemes/ckks"
 	"github.com/tuneinsight/lattigo/v5/core/rlwe"
+	"github.com/tuneinsight/lattigo/v5/ring"
 	"github.com/tuneinsight/lattigo/v5/utils"
 	"github.com/tuneinsight/lattigo/v5/utils/bignum"
 	"github.com/tuneinsight/lattigo/v5/utils/sampling"
@@ -36,7 +37,7 @@ func newTestContext(params hefloat.Parameters) testContext {
 	evk := rlwe.NewMemEvaluationKeySet(kgen.GenRelinearizationKeyNew(sk))
 
 	estimator := estimator.NewParameters(params)
-	estimator.Heuristic = true
+	estimator.Heuristic = false
 
 	return testContext{
 		params:    params,
@@ -45,7 +46,7 @@ func newTestContext(params hefloat.Parameters) testContext {
 		sk:        sk,
 		pk:        pk,
 		decryptor: hefloat.NewDecryptor(params, sk),
-		encoder:   hefloat.NewEncoder(params, 256),
+		encoder:   hefloat.NewEncoder(params, 128),
 		evaluator: hefloat.NewEvaluator(params, evk),
 	}
 }
@@ -90,9 +91,10 @@ func TestEstimator(t *testing.T) {
 
 	params, err := hefloat.NewParametersFromLiteral(hefloat.ParametersLiteral{
 		LogN:            10,
-		LogQ:            []int{55, 45, 45, 45, 45, 45, 45, 45},
+		LogQ:            []int{55, 45, 45, 45, 45, 45, 45, 45, 45},
 		LogP:            []int{60},
 		LogDefaultScale: 45,
+		Xs: ring.Ternary{H:192},
 	})
 
 	if err != nil {
@@ -290,7 +292,9 @@ func testChebyshevPolynomialEvaluation(tc testContext, t *testing.T) {
 		return 1 / (math.Exp(-x) + 1)
 	}
 
-	poly := hefloat.NewPolynomial(GetChebyshevPoly(1, 127, sigmoid))
+	poly := hefloat.NewPolynomial(GetChebyshevPoly(1, 15, sigmoid))
+
+	scalar, constant := poly.ChangeOfBasis()
 
 	t.Run("ChebyshevPolynomialEvaluation/sk", func(t *testing.T) {
 
@@ -307,6 +311,14 @@ func testChebyshevPolynomialEvaluation(tc testContext, t *testing.T) {
 				RunTimed("estimator", func() {
 					var err error
 					var tmp *estimator.	Element
+
+					if scalar.Cmp(new(big.Float).SetInt64(1)) != 0{
+						el.Mul(&el, scalar)
+						el.Add(&el, constant)
+						el.Rescale()
+					}
+					
+
 					if tmp, err = el.EvaluatePolynomial(poly, el.Scale); err != nil{
 						t.Fatal(err)
 					}
@@ -317,6 +329,13 @@ func testChebyshevPolynomialEvaluation(tc testContext, t *testing.T) {
 			})
 
 			RunTimed("encrypted", func() {
+
+				if scalar.Cmp(new(big.Float).SetInt64(1)) != 0{
+					tc.evaluator.Mul(ct, scalar, ct)
+					tc.evaluator.Add(ct, constant, ct)
+					tc.evaluator.Rescale(ct, ct)
+				}
+
 				polyEval := hefloat.NewPolynomialEvaluator(tc.params, tc.evaluator)
 				var err error
 				if ct, err = polyEval.Evaluate(ct, poly, ct.Scale); err != nil {

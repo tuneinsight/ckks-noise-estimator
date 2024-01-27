@@ -37,7 +37,7 @@ func newTestContext(params hefloat.Parameters) testContext {
 	evk := rlwe.NewMemEvaluationKeySet(kgen.GenRelinearizationKeyNew(sk))
 
 	estimator := estimator.NewParameters(params)
-	estimator.Heuristic = false
+	estimator.Heuristic = true
 
 	return testContext{
 		params:    params,
@@ -90,7 +90,7 @@ func newTestVector(tc testContext, key rlwe.EncryptionKey, a, b complex128) (val
 func TestEstimator(t *testing.T) {
 
 	params, err := hefloat.NewParametersFromLiteral(hefloat.ParametersLiteral{
-		LogN:            10,
+		LogN:            14,
 		LogQ:            []int{55, 45, 45, 45, 45, 45, 45, 45, 45},
 		LogP:            []int{60},
 		LogDefaultScale: 45,
@@ -105,7 +105,8 @@ func TestEstimator(t *testing.T) {
 
 	//testChebyshevPowers(tc, t)
 	//testKeySwitching(tc, t)
-	testChebyshevPolynomialEvaluation(tc, t)
+	//testChebyshevPolynomialEvaluation(tc, t)
+	testLinearTransformation(tc, t)
 }
 
 func newPrecisionStats() ckks.PrecisionStats {
@@ -123,6 +124,125 @@ func newPrecisionStats() ckks.PrecisionStats {
 
 func newStats() ckks.Stats {
 	return ckks.Stats{new(big.Float), new(big.Float), new(big.Float)}
+}
+
+func testLinearTransformation(tc testContext, t *testing.T){
+
+	params := tc.params
+
+	mulCmplx := bignum.NewComplexMultiplier().Mul
+
+	add := func(a, b, c []*bignum.Complex) {
+		for i := range c {
+			if a[i] != nil && b[i] != nil {
+				c[i].Add(a[i], b[i])
+			}
+		}
+	}
+
+	muladd := func(a, b, c []*bignum.Complex) {
+		tmp := &bignum.Complex{new(big.Float), new(big.Float)}
+		for i := range c {
+			if a[i] != nil && b[i] != nil {
+				mulCmplx(a[i], b[i], tmp)
+				c[i].Add(c[i], tmp)
+			}
+		}
+	}
+
+	prec := tc.encoder.Prec()
+
+	newVec := func(size int) (vec []*bignum.Complex) {
+		vec = make([]*bignum.Complex, size)
+		for i := range vec {
+			vec[i] = &bignum.Complex{new(big.Float).SetPrec(prec), new(big.Float).SetPrec(0)}
+		}
+		return
+	}
+
+	t.Run("LinearTransformation", func(t *testing.T){
+
+		statsHave := newPrecisionStats()
+		statsWant := newPrecisionStats()
+
+		d := 8
+
+		for w := 0; w < d; w++ {
+			values, el, _, ct := newTestVector(tc, tc.sk, -1, 1)
+
+			slots := ct.Slots()
+
+			nonZeroDiags := []int{-1, 0, 1, 2, 3, 4, 15}
+
+			one := new(big.Float).SetInt64(1)
+			zero := new(big.Float)
+
+			diagonals := make(hefloat.Diagonals[*bignum.Complex])
+			for _, i := range nonZeroDiags {
+				diagonals[i] = make([]*bignum.Complex, slots)
+				for j := 0; j < slots; j++ {
+					diagonals[i][j] = &bignum.Complex{one, zero}
+				}
+			}
+
+			for i := range diagonals{
+				if i < 0{
+					diagonals[slots+i] = diagonals[i]
+					delete(diagonals, i)
+				}
+			}
+
+			lt := estimator.LinearTransformation{
+				MetaData:&rlwe.MetaData{},
+				LogBabyStepGianStepRatio:1,
+				Value: diagonals,
+			}
+
+			lt.Scale = params.GetOptimalScalingFactor(ct.Scale, params.DefaultScale(), ct.Level())
+			lt.LogDimensions = ct.LogDimensions
+
+			el.EvaluateLinearTransformation(lt)
+			el.Decrypt()
+			el.Normalize()
+
+			ltparams := hefloat.LinearTransformationParameters{
+				DiagonalsIndexList:       diagonals.DiagonalsIndexList(),
+				LevelQ:                   ct.Level(),
+				LevelP:                   params.MaxLevelP(),
+				Scale:                    params.GetOptimalScalingFactor(ct.Scale, params.DefaultScale(), ct.Level()),
+				LogDimensions:            ct.LogDimensions,
+				LogBabyStepGianStepRatio: 1,
+			}
+
+			// Allocate the linear transformation
+			linTransf := hefloat.NewLinearTransformation(params, ltparams)
+
+			// Encode on the linear transformation
+			require.NoError(t, hefloat.EncodeLinearTransformation[*bignum.Complex](tc.encoder, diagonals, linTransf))
+
+			galEls := hefloat.GaloisElementsForLinearTransformation(params, ltparams)
+
+			evk := rlwe.NewMemEvaluationKeySet(nil, tc.kgen.GenGaloisKeysNew(galEls, tc.sk)...)
+
+			ltEval := hefloat.NewLinearTransformationEvaluator(tc.evaluator.WithKey(evk))
+
+			require.NoError(t, ltEval.Evaluate(ct, linTransf, ct))
+
+			values = diagonals.Evaluate(values, newVec, add, muladd)
+
+			pWant := hefloat.GetPrecisionStats(tc.params, tc.encoder, nil, values, el.Value[0], 0, false)
+			pHave := hefloat.GetPrecisionStats(tc.params, tc.encoder, tc.decryptor, values, ct, 0, false)
+
+			addStats(&statsWant, &pWant, &statsWant)
+			addStats(&statsHave, &pHave, &statsHave)
+		}
+
+		statsDiv(&statsWant, new(big.Float).SetInt64(int64(d)))
+		statsDiv(&statsHave, new(big.Float).SetInt64(int64(d)))
+
+		fmt.Println(statsWant.String())
+		fmt.Println(statsHave.String())
+	})
 }
 
 func testKeySwitching(tc testContext, t *testing.T) {

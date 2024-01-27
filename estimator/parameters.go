@@ -7,6 +7,7 @@ import (
 
 	"github.com/tuneinsight/lattigo/v5/core/rlwe"
 	"github.com/tuneinsight/lattigo/v5/he/hefloat"
+	"github.com/tuneinsight/lattigo/v5/utils"
 	"github.com/tuneinsight/lattigo/v5/utils/bignum"
 )
 
@@ -43,8 +44,8 @@ func NewParameters(p hefloat.Parameters) Parameters {
 	Encoder := NewEncoder(p.LogN(), prec)
 
 	// Samples a secret-key
-	H := p.XsHammingWeight()
 	N := p.N()
+	H := utils.Min(N, p.XsHammingWeight())
 	skF := make([]*big.Float, N)
 	for i := 0; i < H; i++ {
 		if i&1 == 0 {

@@ -42,12 +42,20 @@ func (p *Element) EvaluateLinearTransformation(lt LinearTransformation) *Element
 	acc := NewElement[*bignum.Complex](*p.Parameters, nil, 1, p.Scale)
 	res := NewElement[*bignum.Complex](*p.Parameters, nil, 1, p.Scale)
 
+	slots := 1<<lt.LogSlots
+
+	tmp := make([]*bignum.Complex, slots)
+
 	for _, j := range keys {
+
+		rot := -j & (slots - 1)
 
 		var cnt int
 		for _, i := range index[j] {
 
-			pt := NewElement(*p.Parameters, lt.Value[i+j], 0, lt.Scale)
+			utils.RotateSliceAllocFree(lt.Value[i+j], rot, tmp)
+
+			pt := NewElement(*p.Parameters, tmp, 0, lt.Scale)
 			pt.AddEncodingNoise()
 
 			if cnt == 0 {

@@ -1,6 +1,7 @@
 package estimator
 
 import (
+	//"fmt"
 	"github.com/tuneinsight/lattigo/v5/he/hefloat"
 	"github.com/tuneinsight/lattigo/v5/utils/bignum"
 )
@@ -16,8 +17,9 @@ func (d *DFTMatrix) GenMatrices(LogN int, prec uint) {
 
 func (el *Element) DFT(mat DFTMatrix) *Element {
 	for i := range mat.Value {
+		scale := el.Parameters.Parameters.GetOptimalScalingFactor(el.Scale, el.DefaultScale(), el.Level)
 		el.EvaluateLinearTransformation(LinearTransformation{
-			Scale:                    el.Parameters.Parameters.GetOptimalScalingFactor(el.Scale, el.DefaultScale(), el.Level),
+			Scale:                    scale,
 			LogSlots:                 mat.LogSlots,
 			LogBabyStepGianStepRatio: mat.LogBSGSRatio,
 			Value:                    mat.Value[i],

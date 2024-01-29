@@ -17,7 +17,7 @@ import (
 	"github.com/tuneinsight/lattigo/v5/schemes/ckks"
 	"github.com/tuneinsight/lattigo/v5/utils"
 	"github.com/tuneinsight/lattigo/v5/utils/bignum"
-	//"github.com/tuneinsight/lattigo/v5/utils/sampling"
+	"github.com/tuneinsight/lattigo/v5/utils/sampling"
 )
 
 type testContext struct {
@@ -59,10 +59,8 @@ func newTestVector(tc testContext, key rlwe.EncryptionKey, a, b complex128) (val
 
 	for i := range values {
 		values[i] = &bignum.Complex{
-			//bignum.NewFloat(sampling.RandFloat64(real(a), real(b)), prec),
-			//bignum.NewFloat(sampling.RandFloat64(imag(a), imag(b)), prec),
-			bignum.NewFloat(1, prec),
-			bignum.NewFloat(0, prec),
+			bignum.NewFloat(sampling.RandFloat64(real(a), real(b)), prec),
+			bignum.NewFloat(sampling.RandFloat64(imag(a), imag(b)), prec),
 		}
 	}
 
@@ -94,7 +92,7 @@ func TestEstimator(t *testing.T) {
 	params, err := hefloat.NewParametersFromLiteral(hefloat.ParametersLiteral{
 		LogN:            14,
 		LogQ:            []int{55, 45, 45, 45, 45, 45, 45, 45, 45},
-		LogP:            []int{60},
+		LogP:            []int{60, 60, 60},
 		LogDefaultScale: 45,
 		Xs:              ring.Ternary{H: 192},
 	})
@@ -109,7 +107,7 @@ func TestEstimator(t *testing.T) {
 	//testKeySwitching(tc, t)
 	//testChebyshevPolynomialEvaluation(tc, t)
 	//testLinearTransformation(tc, t)
-	testCoeffsToSlots(tc, t)
+	testDFT(tc, t)
 }
 
 func newPrecisionStats() ckks.PrecisionStats {
@@ -129,7 +127,7 @@ func newStats() ckks.Stats {
 	return ckks.Stats{new(big.Float), new(big.Float), new(big.Float)}
 }
 
-func testCoeffsToSlots(tc testContext, t *testing.T){
+func testDFT(tc testContext, t *testing.T) {
 	params := tc.params
 
 	mulCmplx := bignum.NewComplexMultiplier().Mul
@@ -162,82 +160,62 @@ func testCoeffsToSlots(tc testContext, t *testing.T){
 		return
 	}
 
-	t.Run("CoeffsToSlots", func(t *testing.T){
+	t.Run("CoeffsToSlots", func(t *testing.T) {
 
 		statsHave := newPrecisionStats()
 		statsWant := newPrecisionStats()
 
-		CoeffsToSlotsParametersLiteral := hefloat.DFTMatrixLiteral{
-			LogSlots: params.LogMaxSlots(),
-			Type:     hefloat.HomomorphicEncode,
-			Format:   hefloat.Standard,
-			LevelQ:   params.MaxLevelQ(),
-			LevelP:   params.MaxLevelP(),
-			Levels:   []int{1, 1, 1, 1},
+		DFTMatrixLiteral := hefloat.DFTMatrixLiteral{
+			LogSlots:     params.LogMaxSlots(),
+			Type:         hefloat.HomomorphicEncode,
+			Format:       hefloat.Standard,
+			LevelQ:       params.MaxLevelQ(),
+			LevelP:       params.MaxLevelP(),
+			Levels:       []int{1, 1, 1, 1},
 			LogBSGSRatio: 0,
 		}
 
 		DFTMatrix := estimator.DFTMatrix{
-			DFTMatrixLiteral:CoeffsToSlotsParametersLiteral,
+			DFTMatrixLiteral: DFTMatrixLiteral,
 		}
 
 		DFTMatrix.GenMatrices(params.LogN(), 128)
 
-		fmt.Println(utils.GetSortedKeys(DFTMatrix.Value[0]))
+		DFTMatrixHeFloat, err := hefloat.NewDFTMatrixFromLiteral(params, DFTMatrixLiteral, tc.encoder)
+		require.NoError(t, err)
 
-		d := 1
+		evk := rlwe.NewMemEvaluationKeySet(nil, tc.kgen.GenGaloisKeysNew(DFTMatrixHeFloat.GaloisElements(params), tc.sk)...)
+
+		eval := hefloat.NewEvaluator(params, evk)
+		hdftEval := hefloat.NewDFTEvaluator(params, eval)
+
+		d := 8
 
 		for w := 0; w < d; w++ {
-			values, el, _, _ := newTestVector(tc, tc.sk, -1, 1)
 
-			
+			values, el, _, ct := newTestVector(tc, tc.sk, -1, 1)
 
-			real, _ := el.CoeffsToSlots(DFTMatrix)
-			real.Decrypt()
-			real.Normalize()
-			//imag.Decrypt()
-			//imag.Normalize()
+			el.DFT(DFTMatrix)
+			el.Decrypt()
+			el.Normalize()
 
+			require.NoError(t, hdftEval.CoeffsToSlots(ct, DFTMatrixHeFloat, ct, nil))
 
-			// Allocate the linear transformation
-			//linTransf := hefloat.NewLinearTransformation(params, ltparams)
-
-			// Encode on the linear transformation
-			//require.NoError(t, hefloat.EncodeLinearTransformation[*bignum.Complex](tc.encoder, diagonals, linTransf))
-
-			//galEls := hefloat.GaloisElementsForLinearTransformation(params, ltparams)
-
-			//evk := rlwe.NewMemEvaluationKeySet(nil, tc.kgen.GenGaloisKeysNew(galEls, tc.sk)...)
-
-			//ltEval := hefloat.NewLinearTransformationEvaluator(tc.evaluator.WithKey(evk))
-
-			//require.NoError(t, ltEval.Evaluate(ct, linTransf, ct))
-
-			fmt.Println(values[0])
-			for i := range DFTMatrix.Value{
+			for i := range DFTMatrix.Value {
 				values = DFTMatrix.Value[i].Evaluate(values, newVec, add, muladd)
-				fmt.Println(values[0])
-			}
-			fmt.Println()
-
-			fmt.Println(real.Value[0][0])	
-			fmt.Println(values[0])
-
-			for i := 0; i < 16; i++{
-				fmt.Println(i, values[i].Complex128(), real.Value[0][i].Complex128())
 			}
 
 			pWant := hefloat.GetPrecisionStats(tc.params, tc.encoder, nil, values, el.Value[0], 0, false)
-			//pHave := hefloat.GetPrecisionStats(tc.params, tc.encoder, tc.decryptor, values, ct, 0, false)
+			pHave := hefloat.GetPrecisionStats(tc.params, tc.encoder, tc.decryptor, values, ct, 0, false)
 
 			addStats(&statsWant, &pWant, &statsWant)
-			//addStats(&statsHave, &pHave, &statsHave)
+			addStats(&statsHave, &pHave, &statsHave)
 		}
 
 		statsDiv(&statsWant, new(big.Float).SetInt64(int64(d)))
-		//statsDiv(&statsHave, new(big.Float).SetInt64(int64(d)))
+		statsDiv(&statsHave, new(big.Float).SetInt64(int64(d)))
 
-		//fmt.Println(statsWant.String())
+		fmt.Println(statsWant.String())
 		fmt.Println(statsHave.String())
 	})
 }
@@ -278,67 +256,68 @@ func testLinearTransformation(tc testContext, t *testing.T) {
 
 	t.Run("LinearTransformation", func(t *testing.T) {
 
+		slots := params.MaxSlots()
+
+		nonZeroDiags := []int{-1, 0, 1, 2, 3, 4, 15}
+
+		one := new(big.Float).SetInt64(1)
+		zero := new(big.Float)
+
+		diagonals := make(hefloat.Diagonals[*bignum.Complex])
+		for _, i := range nonZeroDiags {
+			diagonals[i] = make([]*bignum.Complex, slots)
+			for j := 0; j < slots; j++ {
+				diagonals[i][j] = &bignum.Complex{one, zero}
+			}
+		}
+
+		for i := range diagonals {
+			if i < 0 {
+				diagonals[slots+i] = diagonals[i]
+				delete(diagonals, i)
+			}
+		}
+
+		lt := estimator.LinearTransformation{
+			Scale:                    params.GetOptimalScalingFactor(params.DefaultScale(), params.DefaultScale(), params.MaxLevel()),
+			LogSlots:                 params.LogMaxSlots(),
+			LogBabyStepGianStepRatio: 1,
+			Value:                    diagonals,
+		}
+
+		ltparams := hefloat.LinearTransformationParameters{
+			DiagonalsIndexList:       diagonals.DiagonalsIndexList(),
+			LevelQ:                   params.MaxLevel(),
+			LevelP:                   params.MaxLevelP(),
+			Scale:                    lt.Scale,
+			LogDimensions:            params.LogMaxDimensions(),
+			LogBabyStepGianStepRatio: 1,
+		}
+
+		// Allocate the linear transformation
+		linTransf := hefloat.NewLinearTransformation(params, ltparams)
+
+		// Encode on the linear transformation
+		require.NoError(t, hefloat.EncodeLinearTransformation[*bignum.Complex](tc.encoder, diagonals, linTransf))
+
+		galEls := hefloat.GaloisElementsForLinearTransformation(params, ltparams)
+
+		evk := rlwe.NewMemEvaluationKeySet(nil, tc.kgen.GenGaloisKeysNew(galEls, tc.sk)...)
+
+		ltEval := hefloat.NewLinearTransformationEvaluator(tc.evaluator.WithKey(evk))
+
 		statsHave := newPrecisionStats()
 		statsWant := newPrecisionStats()
 
 		d := 8
 
 		for w := 0; w < d; w++ {
+
 			values, el, _, ct := newTestVector(tc, tc.sk, -1, 1)
-
-			slots := ct.Slots()
-
-			nonZeroDiags := []int{-1, 0, 1, 2, 3, 4, 15}
-
-			one := new(big.Float).SetInt64(1)
-			zero := new(big.Float)
-
-			diagonals := make(hefloat.Diagonals[*bignum.Complex])
-			for _, i := range nonZeroDiags {
-				diagonals[i] = make([]*bignum.Complex, slots)
-				for j := 0; j < slots; j++ {
-					diagonals[i][j] = &bignum.Complex{one, zero}
-				}
-			}
-
-			for i := range diagonals {
-				if i < 0 {
-					diagonals[slots+i] = diagonals[i]
-					delete(diagonals, i)
-				}
-			}
-
-			lt := estimator.LinearTransformation{
-				Scale:                    params.GetOptimalScalingFactor(ct.Scale, params.DefaultScale(), ct.Level()),
-				LogSlots:                 ct.LogDimensions.Cols,
-				LogBabyStepGianStepRatio: 1,
-				Value:                    diagonals,
-			}
 
 			el.EvaluateLinearTransformation(lt)
 			el.Decrypt()
 			el.Normalize()
-
-			ltparams := hefloat.LinearTransformationParameters{
-				DiagonalsIndexList:       diagonals.DiagonalsIndexList(),
-				LevelQ:                   ct.Level(),
-				LevelP:                   params.MaxLevelP(),
-				Scale:                    params.GetOptimalScalingFactor(ct.Scale, params.DefaultScale(), ct.Level()),
-				LogDimensions:            ct.LogDimensions,
-				LogBabyStepGianStepRatio: 1,
-			}
-
-			// Allocate the linear transformation
-			linTransf := hefloat.NewLinearTransformation(params, ltparams)
-
-			// Encode on the linear transformation
-			require.NoError(t, hefloat.EncodeLinearTransformation[*bignum.Complex](tc.encoder, diagonals, linTransf))
-
-			galEls := hefloat.GaloisElementsForLinearTransformation(params, ltparams)
-
-			evk := rlwe.NewMemEvaluationKeySet(nil, tc.kgen.GenGaloisKeysNew(galEls, tc.sk)...)
-
-			ltEval := hefloat.NewLinearTransformationEvaluator(tc.evaluator.WithKey(evk))
 
 			require.NoError(t, ltEval.Evaluate(ct, linTransf, ct))
 

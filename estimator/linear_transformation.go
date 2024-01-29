@@ -42,7 +42,7 @@ func (p *Element) EvaluateLinearTransformation(lt LinearTransformation) *Element
 	acc := NewElement[*bignum.Complex](*p.Parameters, nil, 1, p.Scale)
 	res := NewElement[*bignum.Complex](*p.Parameters, nil, 1, p.Scale)
 
-	slots := 1<<lt.LogSlots
+	slots := 1 << lt.LogSlots
 
 	tmp := make([]*bignum.Complex, slots)
 

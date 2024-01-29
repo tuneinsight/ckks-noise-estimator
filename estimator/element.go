@@ -43,7 +43,7 @@ func (p Element) CopyNew() *Element {
 	}
 }
 
-func NewElement[T ckks.Float](p Parameters, v []T, Degree int, scale rlwe.Scale) Element {
+func NewElement[T ckks.Float](p Parameters, v []T, Degree int, scale rlwe.Scale) *Element {
 
 	if len(v) > p.MaxSlots() {
 		panic("len(v) > p.MaxSlots()")
@@ -68,7 +68,7 @@ func NewElement[T ckks.Float](p Parameters, v []T, Degree int, scale rlwe.Scale)
 		e2[i] = bignum.ToComplex(0, prec)
 	}
 
-	return Element{
+	return &Element{
 		Parameters: &p,
 		Degree:     Degree,
 		Level:      p.MaxLevel(),

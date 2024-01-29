@@ -21,7 +21,7 @@ func (p *Element) Add(op0 *Element, op1 rlwe.Operand) *Element {
 
 		var tmp0, tmp1 *Element
 
-		switch op0.Scale.Cmp(op1.Scale){
+		switch op0.Scale.Cmp(op1.Scale) {
 		case -1:
 
 			ratio := op1.Scale.Div(op0.Scale)
@@ -30,7 +30,7 @@ func (p *Element) Add(op0 *Element, op1 rlwe.Operand) *Element {
 				tmp0 = op0.CopyNew()
 				tmp0.Mul(tmp0, ratio.BigInt())
 				p.Scale = op1.Scale
-			}else{
+			} else {
 				tmp0 = op0
 			}
 
@@ -47,7 +47,7 @@ func (p *Element) Add(op0 *Element, op1 rlwe.Operand) *Element {
 				tmp1 = op1.CopyNew()
 				tmp1.Mul(tmp1, ratio.BigInt())
 				p.Scale = op0.Scale
-			}else{
+			} else {
 				tmp1 = op1
 			}
 
@@ -99,7 +99,7 @@ func (p *Element) Sub(op0 *Element, op1 rlwe.Operand) *Element {
 
 		var tmp0, tmp1 *Element
 
-		switch op0.Scale.Cmp(op1.Scale){
+		switch op0.Scale.Cmp(op1.Scale) {
 		case -1:
 
 			ratio := op1.Scale.Div(op0.Scale)
@@ -110,7 +110,7 @@ func (p *Element) Sub(op0 *Element, op1 rlwe.Operand) *Element {
 				tmp0.Mul(tmp0, ratio.BigInt())
 				tmp0.Scale = op1.Scale
 				p.Scale = op1.Scale
-			}else{
+			} else {
 				tmp0 = op0
 			}
 
@@ -129,7 +129,7 @@ func (p *Element) Sub(op0 *Element, op1 rlwe.Operand) *Element {
 				tmp1.Mul(tmp1, ratio.BigInt())
 				tmp1.Scale = op0.Scale
 				p.Scale = op0.Scale
-			}else{
+			} else {
 				tmp1 = op1
 			}
 
@@ -219,11 +219,11 @@ func (p *Element) Mul(op0 *Element, op1 rlwe.Operand) *Element {
 
 		bComplex := bignum.ToComplex(op1, p.Value[0][0].Prec())
 
-		if !bComplex.IsInt(){
+		if !bComplex.IsInt() {
 			bComplex[0].Mul(bComplex[0], p.Q[p.Level])
 			bComplex[1].Mul(bComplex[1], p.Q[p.Level])
 			p.Scale = op0.Scale.Mul(rlwe.NewScale(p.Q[p.Level]))
-		}else{
+		} else {
 			p.Scale = op0.Scale
 		}
 
@@ -234,7 +234,7 @@ func (p *Element) Mul(op0 *Element, op1 rlwe.Operand) *Element {
 				mul(m0[i], bComplex, m2[i])
 			}
 		}
-		
+
 		p.Degree = op0.Degree
 
 	default:
@@ -269,7 +269,7 @@ func (p *Element) MulThenAdd(op0 *Element, op1 rlwe.Operand) *Element {
 			}
 		}
 
-		if op0.Degree == 1 && op1.Degree == 1{
+		if op0.Degree == 1 && op1.Degree == 1 {
 			// m0 * m1
 			m00 := op0.Value[0] // (m0 + e00)
 			e01 := op0.Value[1] // e01
@@ -277,8 +277,8 @@ func (p *Element) MulThenAdd(op0 *Element, op1 rlwe.Operand) *Element {
 			m10 := op1.Value[0] // (m1 + e10)
 			e11 := op1.Value[1] // e11
 
-			m20 := p.Value[0]   // (m2 + e20)
-			e21 := p.Value[1]   // e21
+			m20 := p.Value[0] // (m2 + e20)
+			e21 := p.Value[1] // e21
 			e22 := p.Value[2] // e22
 
 			tmp := bignum.NewComplex()
@@ -306,7 +306,7 @@ func (p *Element) MulThenAdd(op0 *Element, op1 rlwe.Operand) *Element {
 			p.Level = utils.Min(op0.Level, op1.Level)
 			p.Degree = op0.Degree + op1.Degree
 
-		}else{
+		} else {
 
 			acc := bignum.NewComplex()
 
@@ -316,11 +316,11 @@ func (p *Element) MulThenAdd(op0 *Element, op1 rlwe.Operand) *Element {
 
 			m := op1.Value[0]
 
-			for i := 0; i < p.Degree+1; i++{
+			for i := 0; i < p.Degree+1; i++ {
 				v0 := p.Value[i]
 				v1 := op0.Value[i]
 
-				for j := range m{
+				for j := range m {
 					mul(v1[j], m[j], acc)
 					v0[j].Add(v0[j], acc)
 				}
@@ -374,7 +374,7 @@ func (p *Element) MulThenAdd(op0 *Element, op1 rlwe.Operand) *Element {
 				m2[i].Add(m2[i], acc)
 			}
 		}
-		
+
 	default:
 		panic(fmt.Errorf("invalid op1.(type): must be *Element, complex128, float64, int, int64, uint, uint64, *big.Int, *big.Float, *bignum.Complex, []complex128, []float64, []*big.Float or []*bignum.Complex, but is %T", op1))
 	}
@@ -389,6 +389,24 @@ func (p *Element) Rotate(k int) *Element {
 	}
 
 	utils.RotateSliceInPlace(p.Value[0], k)
+
+	// p.Value[1]: noise of the second component (s term)
+	// p.Sk[0]: sk^1
+	p.AddKeySwitchingNoise(p.Value[1], p.Sk[0])
+
+	return p
+}
+
+func (p *Element) Conjugate() *Element {
+	if p.Degree != 1 {
+		panic("cannot Rotate: Degree != 1")
+	}
+
+	coeffs := p.Value[0]
+
+	for i := range coeffs {
+		coeffs[i][1].Neg(coeffs[i][1])
+	}
 
 	// p.Value[1]: noise of the second component (s term)
 	// p.Sk[0]: sk^1

@@ -81,16 +81,16 @@ func NewParameters(p hefloat.Parameters) Parameters {
 	}
 
 	return Parameters{
-		Parameters:p,
-		LogN:    p.LogN(),
-		Sigma:   p.NoiseFreshSK(),
-		H:       H,
-		Encoder: *Encoder,
-		Q:       Qi,
-		P:       Pi,
-		LevelP:  len(P) - 1,
-		Scale:   p.DefaultScale(),
-		Sk:      [][]*bignum.Complex{sk, sk2},
+		Parameters: p,
+		LogN:       p.LogN(),
+		Sigma:      p.NoiseFreshSK(),
+		H:          H,
+		Encoder:    *Encoder,
+		Q:          Qi,
+		P:          Pi,
+		LevelP:     len(P) - 1,
+		Scale:      p.DefaultScale(),
+		Sk:         [][]*bignum.Complex{sk, sk2},
 	}
 }
 

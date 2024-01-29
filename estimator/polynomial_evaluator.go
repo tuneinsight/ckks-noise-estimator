@@ -1,11 +1,12 @@
 package estimator
 
-import(
+import (
 	"fmt"
 	"math/bits"
+
+	"github.com/tuneinsight/lattigo/v5/core/rlwe"
 	"github.com/tuneinsight/lattigo/v5/he"
 	"github.com/tuneinsight/lattigo/v5/he/hefloat"
-	"github.com/tuneinsight/lattigo/v5/core/rlwe"
 	"github.com/tuneinsight/lattigo/v5/utils"
 	"github.com/tuneinsight/lattigo/v5/utils/bignum"
 )
@@ -28,7 +29,7 @@ func (p *Element) EvaluatePolynomial(poly interface{}, targetScale rlwe.Scale) (
 		return nil, fmt.Errorf("cannot Polynomial: invalid polynomial type, must be either bignum.Polynomial, he.Polynomial or he.PolynomialVector, but is %T", poly)
 	}
 
-	powerbasis := NewPowerBasis(*p, polyVec.Value[0].Basis)
+	powerbasis := NewPowerBasis(p, polyVec.Value[0].Basis)
 
 	logDegree := bits.Len64(uint64(polyVec.Value[0].Degree()))
 	logSplit := bignum.OptimalSplit(logDegree)
@@ -244,8 +245,7 @@ func EvaluatePolynomialVectorFromPowerBasis[T any](targetLevel int, pol he.Polyn
 		// If the degree of the poly is zero
 		if minimumDegreeNonZeroCoefficient == 0 {
 
-			el := NewElement(params, make([]float64, params.MaxSlots()), 1, targetScale)
-			res = &el
+			res = NewElement(params, make([]float64, params.MaxSlots()), 1, targetScale)
 			res.Level = targetLevel
 
 			if even {
@@ -256,9 +256,8 @@ func EvaluatePolynomialVectorFromPowerBasis[T any](targetLevel int, pol he.Polyn
 		}
 
 		// Allocates the output ciphertext
-		el := NewElement(params, make([]float64, params.MaxSlots()), maximumCiphertextDegree, targetScale)
-		el.Level = targetLevel
-		res = &el
+		res := NewElement(params, make([]float64, params.MaxSlots()), maximumCiphertextDegree, targetScale)
+		res.Level = targetLevel
 
 		if even {
 			res.Add(res, cg.GetVectorCoefficient(pol, 0))
@@ -273,11 +272,9 @@ func EvaluatePolynomialVectorFromPowerBasis[T any](targetLevel int, pol he.Polyn
 
 	} else {
 
-
 		if minimumDegreeNonZeroCoefficient == 0 {
 
-			el := NewElement(params, make([]float64, params.MaxSlots()), 1, targetScale)
-			res = &el
+			res = NewElement(params, make([]float64, params.MaxSlots()), 1, targetScale)
 			res.Level = targetLevel
 
 			if even {
@@ -287,8 +284,7 @@ func EvaluatePolynomialVectorFromPowerBasis[T any](targetLevel int, pol he.Polyn
 			return
 		}
 
-		el := NewElement(params, make([]float64, params.MaxSlots()), maximumCiphertextDegree, targetScale)
-		res = &el
+		res := NewElement(params, make([]float64, params.MaxSlots()), maximumCiphertextDegree, targetScale)
 		res.Level = targetLevel
 
 		if even {
@@ -302,7 +298,6 @@ func EvaluatePolynomialVectorFromPowerBasis[T any](targetLevel int, pol he.Polyn
 			}
 		}
 
-		
 	}
 
 	return

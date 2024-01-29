@@ -2,19 +2,19 @@ package estimator_test
 
 import (
 	"fmt"
+	"math"
 	"math/big"
 	"os"
 	"runtime/pprof"
 	"testing"
 	"time"
-	"math"
 
 	"github.com/stretchr/testify/require"
 	"github.com/tuneinsight/ckks-bootstrapping-precision/estimator"
-	"github.com/tuneinsight/lattigo/v5/he/hefloat"
-	"github.com/tuneinsight/lattigo/v5/schemes/ckks"
 	"github.com/tuneinsight/lattigo/v5/core/rlwe"
+	"github.com/tuneinsight/lattigo/v5/he/hefloat"
 	"github.com/tuneinsight/lattigo/v5/ring"
+	"github.com/tuneinsight/lattigo/v5/schemes/ckks"
 	"github.com/tuneinsight/lattigo/v5/utils"
 	"github.com/tuneinsight/lattigo/v5/utils/bignum"
 	"github.com/tuneinsight/lattigo/v5/utils/sampling"
@@ -51,7 +51,7 @@ func newTestContext(params hefloat.Parameters) testContext {
 	}
 }
 
-func newTestVector(tc testContext, key rlwe.EncryptionKey, a, b complex128) (values []*bignum.Complex, el estimator.Element, pt *rlwe.Plaintext, ct *rlwe.Ciphertext) {
+func newTestVector(tc testContext, key rlwe.EncryptionKey, a, b complex128) (values []*bignum.Complex, el *estimator.Element, pt *rlwe.Plaintext, ct *rlwe.Ciphertext) {
 
 	prec := tc.encoder.Prec()
 
@@ -94,7 +94,7 @@ func TestEstimator(t *testing.T) {
 		LogQ:            []int{55, 45, 45, 45, 45, 45, 45, 45, 45},
 		LogP:            []int{60},
 		LogDefaultScale: 45,
-		Xs: ring.Ternary{H:192},
+		Xs:              ring.Ternary{H: 192},
 	})
 
 	if err != nil {
@@ -126,7 +126,7 @@ func newStats() ckks.Stats {
 	return ckks.Stats{new(big.Float), new(big.Float), new(big.Float)}
 }
 
-func testLinearTransformation(tc testContext, t *testing.T){
+func testLinearTransformation(tc testContext, t *testing.T) {
 
 	params := tc.params
 
@@ -160,7 +160,7 @@ func testLinearTransformation(tc testContext, t *testing.T){
 		return
 	}
 
-	t.Run("LinearTransformation", func(t *testing.T){
+	t.Run("LinearTransformation", func(t *testing.T) {
 
 		statsHave := newPrecisionStats()
 		statsWant := newPrecisionStats()
@@ -185,21 +185,19 @@ func testLinearTransformation(tc testContext, t *testing.T){
 				}
 			}
 
-			for i := range diagonals{
-				if i < 0{
+			for i := range diagonals {
+				if i < 0 {
 					diagonals[slots+i] = diagonals[i]
 					delete(diagonals, i)
 				}
 			}
 
 			lt := estimator.LinearTransformation{
-				MetaData:&rlwe.MetaData{},
-				LogBabyStepGianStepRatio:1,
-				Value: diagonals,
+				Scale:                    params.GetOptimalScalingFactor(ct.Scale, params.DefaultScale(), ct.Level()),
+				LogSlots:                 ct.LogDimensions.Cols,
+				LogBabyStepGianStepRatio: 1,
+				Value:                    diagonals,
 			}
-
-			lt.Scale = params.GetOptimalScalingFactor(ct.Scale, params.DefaultScale(), ct.Level())
-			lt.LogDimensions = ct.LogDimensions
 
 			el.EvaluateLinearTransformation(lt)
 			el.Decrypt()
@@ -310,7 +308,7 @@ func testChebyshevPowers(tc testContext, t *testing.T) {
 				RunTimed("estimator", func() {
 					pb := estimator.NewPowerBasis(el, bignum.Chebyshev)
 					pb.GenPower(1<<n, false)
-					el = *pb.Value[1<<n]
+					el = pb.Value[1<<n]
 					el.Decrypt()
 					el.Normalize()
 				})
@@ -319,7 +317,7 @@ func testChebyshevPowers(tc testContext, t *testing.T) {
 			RunTimed("encrypted", func() {
 				eval := tc.evaluator
 				pb := hefloat.NewPowerBasis(ct, bignum.Chebyshev)
-				if err := pb.GenPower(1<<n, false, eval); err != nil{
+				if err := pb.GenPower(1<<n, false, eval); err != nil {
 					panic(err)
 				}
 				ct = pb.Value[1<<n]
@@ -366,7 +364,7 @@ func testChebyshevPowers(tc testContext, t *testing.T) {
 				RunTimed("estimator", func() {
 					pb := estimator.NewPowerBasis(el, bignum.Chebyshev)
 					pb.GenPower(1<<n, false)
-					el = *pb.Value[1<<n]
+					el = pb.Value[1<<n]
 					el.Decrypt()
 					el.Normalize()
 				})
@@ -375,7 +373,7 @@ func testChebyshevPowers(tc testContext, t *testing.T) {
 			RunTimed("encrypted", func() {
 				eval := tc.evaluator
 				pb := hefloat.NewPowerBasis(ct, bignum.Chebyshev)
-				if err := pb.GenPower(1<<n, false, eval); err != nil{
+				if err := pb.GenPower(1<<n, false, eval); err != nil {
 					panic(err)
 				}
 				ct = pb.Value[1<<n]
@@ -430,19 +428,18 @@ func testChebyshevPolynomialEvaluation(tc testContext, t *testing.T) {
 			RunProfiled(func() {
 				RunTimed("estimator", func() {
 					var err error
-					var tmp *estimator.	Element
+					var tmp *estimator.Element
 
-					if scalar.Cmp(new(big.Float).SetInt64(1)) != 0{
-						el.Mul(&el, scalar)
-						el.Add(&el, constant)
+					if scalar.Cmp(new(big.Float).SetInt64(1)) != 0 {
+						el.Mul(el, scalar)
+						el.Add(el, constant)
 						el.Rescale()
 					}
-					
 
-					if tmp, err = el.EvaluatePolynomial(poly, el.Scale); err != nil{
+					if tmp, err = el.EvaluatePolynomial(poly, el.Scale); err != nil {
 						t.Fatal(err)
 					}
-					el = *tmp
+					el = tmp
 					el.Decrypt()
 					el.Normalize()
 				})
@@ -450,7 +447,7 @@ func testChebyshevPolynomialEvaluation(tc testContext, t *testing.T) {
 
 			RunTimed("encrypted", func() {
 
-				if scalar.Cmp(new(big.Float).SetInt64(1)) != 0{
+				if scalar.Cmp(new(big.Float).SetInt64(1)) != 0 {
 					tc.evaluator.Mul(ct, scalar, ct)
 					tc.evaluator.Add(ct, constant, ct)
 					tc.evaluator.Rescale(ct, ct)
@@ -471,7 +468,7 @@ func testChebyshevPolynomialEvaluation(tc testContext, t *testing.T) {
 
 			fmt.Println(values[0])
 			fmt.Println(el.Value[0][0])
-	
+
 			pWant := hefloat.GetPrecisionStats(tc.params, tc.encoder, nil, values, el.Value[0], 0, false)
 			pHave := hefloat.GetPrecisionStats(tc.params, tc.encoder, tc.decryptor, values, ct, 0, false)
 

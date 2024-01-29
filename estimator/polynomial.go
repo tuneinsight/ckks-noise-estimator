@@ -15,7 +15,7 @@ type PowerBasis struct {
 // NewPowerBasis creates a new PowerBasis. It takes as input a ciphertext
 // and a basistype. The struct treats the input ciphertext as a monomial X and
 // can be used to generates power of this monomial X^{n} in the given BasisType.
-func NewPowerBasis(ct Element, basis bignum.Basis) (p *PowerBasis) {
+func NewPowerBasis(ct *Element, basis bignum.Basis) (p *PowerBasis) {
 	p = new(PowerBasis)
 	p.Value = make(map[int]*Element)
 	p.Value[1] = ct.CopyNew()
@@ -104,7 +104,7 @@ func (p *PowerBasis) genPower(n int, lazy bool) (rescale bool) {
 
 			// Computes C[n] = 2*C[a]*C[b]
 			p.Value[n].Mul(p.Value[n], 2)
-				
+
 			// Computes C[n] = 2*C[a]*C[b] - C[c]
 			if c == 0 {
 				p.Value[n].Add(p.Value[n], -1)

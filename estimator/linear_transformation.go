@@ -1,24 +1,24 @@
 package estimator
 
-import(
+import (
+	"github.com/tuneinsight/lattigo/v5/core/rlwe"
 	"github.com/tuneinsight/lattigo/v5/he"
 	"github.com/tuneinsight/lattigo/v5/he/hefloat"
-	"github.com/tuneinsight/lattigo/v5/core/rlwe"
 	"github.com/tuneinsight/lattigo/v5/utils"
 	"github.com/tuneinsight/lattigo/v5/utils/bignum"
 )
 
-type LinearTransformation struct{
-	*rlwe.MetaData
+type LinearTransformation struct {
+	LogSlots                 int
+	Scale                    rlwe.Scale
 	LogBabyStepGianStepRatio int
 	Value                    hefloat.Diagonals[*bignum.Complex]
 }
 
 // BSGSIndex returns the BSGSIndex of the target linear transformation.
 func (lt LinearTransformation) BSGSIndex() (index map[int][]int, n1, n2 []int) {
-	cols := 1<<lt.LogDimensions.Cols
+	cols := 1 << lt.LogSlots
 	N1 := he.FindBestBSGSRatio(lt.Value.DiagonalsIndexList(), cols, lt.LogBabyStepGianStepRatio)
-
 	return he.BSGSIndex(utils.GetKeys(lt.Value), cols, N1)
 }
 
@@ -50,26 +50,26 @@ func (p *Element) EvaluateLinearTransformation(lt LinearTransformation) *Element
 			pt := NewElement(*p.Parameters, lt.Value[i+j], 0, lt.Scale)
 			pt.AddEncodingNoise()
 
-			if cnt == 0{
-				acc.Mul(ctPreRot[i], &pt)
-			}else{
-				acc.MulThenAdd(ctPreRot[i], &pt)
+			if cnt == 0 {
+				acc.Mul(ctPreRot[i], pt)
+			} else {
+				acc.MulThenAdd(ctPreRot[i], pt)
 			}
 
 			cnt++
 		}
 
-		if j != 0{
+		if j != 0 {
 			acc.ModDown()
 			acc.RotateHoisted(j)
 		}
 
-		res.Add(&res, &acc)
+		res.Add(res, acc)
 	}
 
 	res.ModDown()
 
-	*p = res
+	*p = *res
 
-	return &res
+	return res
 }

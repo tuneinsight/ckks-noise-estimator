@@ -388,11 +388,11 @@ func (p *Element) Rotate(k int) *Element {
 		panic("cannot Rotate: Degree != 1")
 	}
 
-	utils.RotateSliceInPlace(p.Value[0], k)
-
 	// p.Value[1]: noise of the second component (s term)
 	// p.Sk[0]: sk^1
-	p.AddKeySwitchingNoise(p.Value[1], p.Sk[0])
+	p.AddAutomorphismNoise()
+
+	utils.RotateSliceInPlace(p.Value[0], k)
 
 	return p
 }
@@ -402,15 +402,15 @@ func (p *Element) Conjugate() *Element {
 		panic("cannot Rotate: Degree != 1")
 	}
 
+	// p.Value[1]: noise of the second component (s term)
+	// p.Sk[0]: sk^1
+	p.AddAutomorphismNoise()
+
 	coeffs := p.Value[0]
 
 	for i := range coeffs {
 		coeffs[i][1].Neg(coeffs[i][1])
 	}
-
-	// p.Value[1]: noise of the second component (s term)
-	// p.Sk[0]: sk^1
-	p.AddKeySwitchingNoise(p.Value[1], p.Sk[0])
 
 	return p
 }
@@ -422,7 +422,7 @@ func (p *Element) Relinearize() {
 
 	// p.Value[2]: noise of the third component (s^2 term)
 	// p.Sk[1]: Sk^2
-	p.AddKeySwitchingNoise(p.Value[2], p.Sk[1])
+	p.AddRelinearizationNoise()
 	p.Degree = 1
 }
 
@@ -433,8 +433,6 @@ func (p *Element) RotateHoisted(k int) {
 	if p.Degree != 1 {
 		panic("cannot Rotate: Degree != 1")
 	}
-
-	utils.RotateSliceInPlace(p.Value[0], k)
 
 	// Scales first term by P
 	value := p.Value[0]
@@ -447,7 +445,9 @@ func (p *Element) RotateHoisted(k int) {
 	// p.Value[1]: noise of the second component (s term)
 	// p.Sk[0]: sk^1
 	// Added noise is scaled by P
-	p.AddKeySwitchingNoiseRaw(p.Value[1], p.Sk[0])
+	p.AddAutomorphismNoiseRaw()
+
+	utils.RotateSliceInPlace(p.Value[0], k)
 }
 
 // ModDown divides by P and adds rounding noise.

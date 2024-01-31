@@ -4,7 +4,52 @@ import (
 	"fmt"
 	"math"
 	"math/big"
+	"github.com/tuneinsight/lattigo/v5/core/rlwe"
+	"github.com/tuneinsight/lattigo/v5/he/hefloat"
+	"github.com/tuneinsight/lattigo/v5/utils/bignum"
+	"github.com/tuneinsight/lattigo/v5/utils/sampling"
 )
+
+func (p Parameters) NewTestVector(ecd *hefloat.Encoder, enc *rlwe.Encryptor, a, b complex128) (values []*bignum.Complex, el *Element, pt *rlwe.Plaintext, ct *rlwe.Ciphertext) {
+
+	params := p.Parameters
+
+	prec := ecd.Prec()
+
+	values = make([]*bignum.Complex, params.MaxSlots())
+
+	for i := range values {
+		values[i] = &bignum.Complex{
+			bignum.NewFloat(sampling.RandFloat64(real(a), real(b)), prec),
+			bignum.NewFloat(sampling.RandFloat64(imag(a), imag(b)), prec),
+		}
+	}
+
+	values[0][0].SetFloat64(1)
+	values[0][1].SetFloat64(0)
+
+	el = NewElement(p, values, 1, params.DefaultScale())
+	el.AddEncodingNoise()
+
+	pt = hefloat.NewPlaintext(params, params.MaxLevel())
+	if err := ecd.Encode(values, pt); err != nil{
+		panic(err)
+	}
+
+	if enc != nil{
+		ct, _ = enc.EncryptNew(pt)
+		switch enc.KeyType().(type) {
+		case *rlwe.SecretKey:
+			el.AddEncryptionNoiseSk()
+		case *rlwe.PublicKey:
+			el.AddEncryptionNoisePk()
+		default:
+			panic("INVALID ENCRYPION KEY")
+		}
+	}
+	
+	return
+}
 
 const (
 	prec = uint(128)

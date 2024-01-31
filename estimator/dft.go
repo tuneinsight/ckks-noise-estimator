@@ -1,7 +1,6 @@
 package estimator
 
 import (
-	//"fmt"
 	"github.com/tuneinsight/lattigo/v5/he/hefloat"
 	"github.com/tuneinsight/lattigo/v5/utils/bignum"
 )
@@ -53,6 +52,7 @@ func (el *Element) CoeffsToSlots(mat DFTMatrix) (elReal, elImag *Element) {
 		elImag.Sub(zV, elReal)
 		elImag.Mul(elImag, -1i)
 		elReal.Add(elReal, zV)
+
 
 		// If repacking, then ct0 and ct1 right n/2 slots are zero.
 		if mat.Format == hefloat.RepackImagAsReal && mat.LogSlots < el.LogMaxSlots() {

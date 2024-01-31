@@ -109,6 +109,7 @@ func (p Parameters) NormalNoise(sigma float64) (e []*bignum.Complex) {
 	return p.Noise(f)
 }
 
+// {eCt * sk + round(sum(e_i * qalphai)/P), round(1/2)}
 func (p Parameters) KeySwitchingNoise(levelQ int, eCt, sk []*bignum.Complex) (e0, e1 []*bignum.Complex) {
 
 	e := p.KeySwitchingNoiseRaw(levelQ, eCt, sk)

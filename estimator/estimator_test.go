@@ -14,7 +14,6 @@ import (
 	"github.com/tuneinsight/lattigo/v5/core/rlwe"
 	"github.com/tuneinsight/lattigo/v5/he/hefloat"
 	"github.com/tuneinsight/lattigo/v5/ring"
-	"github.com/tuneinsight/lattigo/v5/schemes/ckks"
 	"github.com/tuneinsight/lattigo/v5/utils"
 	"github.com/tuneinsight/lattigo/v5/utils/bignum"
 	"github.com/tuneinsight/lattigo/v5/utils/sampling"
@@ -91,8 +90,8 @@ func TestEstimator(t *testing.T) {
 
 	params, err := hefloat.NewParametersFromLiteral(hefloat.ParametersLiteral{
 		LogN:            14,
-		LogQ:            []int{55, 45, 45, 45, 45, 45, 45, 45, 45},
-		LogP:            []int{60, 60, 60},
+		LogQ:            []int{55, 45, 45, 45, 45},
+		LogP:            []int{60, 60},
 		LogDefaultScale: 45,
 		Xs:              ring.Ternary{H: 192},
 	})
@@ -110,22 +109,7 @@ func TestEstimator(t *testing.T) {
 	testDFT(tc, t)
 }
 
-func newPrecisionStats() ckks.PrecisionStats {
-	return ckks.PrecisionStats{
-		MaxDelta:        newStats(),
-		MinDelta:        newStats(),
-		MaxPrecision:    newStats(),
-		MinPrecision:    newStats(),
-		MeanDelta:       newStats(),
-		MeanPrecision:   newStats(),
-		MedianDelta:     newStats(),
-		MedianPrecision: newStats(),
-	}
-}
 
-func newStats() ckks.Stats {
-	return ckks.Stats{new(big.Float), new(big.Float), new(big.Float)}
-}
 
 func testDFT(tc testContext, t *testing.T) {
 	params := tc.params
@@ -162,13 +146,13 @@ func testDFT(tc testContext, t *testing.T) {
 
 	t.Run("CoeffsToSlots", func(t *testing.T) {
 
-		statsHave := newPrecisionStats()
-		statsWant := newPrecisionStats()
+		statsHave := estimator.Stats{}
+		statsWant := estimator.Stats{}
 
 		DFTMatrixLiteral := hefloat.DFTMatrixLiteral{
 			LogSlots:     params.LogMaxSlots(),
 			Type:         hefloat.HomomorphicEncode,
-			Format:       hefloat.Standard,
+			Format:       hefloat.RepackImagAsReal,
 			LevelQ:       params.MaxLevelQ(),
 			LevelP:       params.MaxLevelP(),
 			Levels:       []int{1, 1, 1, 1},
@@ -184,36 +168,81 @@ func testDFT(tc testContext, t *testing.T) {
 		DFTMatrixHeFloat, err := hefloat.NewDFTMatrixFromLiteral(params, DFTMatrixLiteral, tc.encoder)
 		require.NoError(t, err)
 
-		evk := rlwe.NewMemEvaluationKeySet(nil, tc.kgen.GenGaloisKeysNew(DFTMatrixHeFloat.GaloisElements(params), tc.sk)...)
+		evk := rlwe.NewMemEvaluationKeySet(nil, tc.kgen.GenGaloisKeysNew(append(DFTMatrixHeFloat.GaloisElements(params), params.GaloisElementForComplexConjugation()), tc.sk)...)
 
 		eval := hefloat.NewEvaluator(params, evk)
 		hdftEval := hefloat.NewDFTEvaluator(params, eval)
 
-		d := 8
+		d := 1
 
 		for w := 0; w < d; w++ {
 
 			values, el, _, ct := newTestVector(tc, tc.sk, -1, 1)
 
-			el.DFT(DFTMatrix)
-			el.Decrypt()
-			el.Normalize()
+			elReal, elImag := el.CoeffsToSlots(DFTMatrix)
 
-			require.NoError(t, hdftEval.CoeffsToSlots(ct, DFTMatrixHeFloat, ct, nil))
+			ctReal, ctImag, err := hdftEval.CoeffsToSlotsNew(ct, DFTMatrixHeFloat)
+			require.NoError(t, err)
 
 			for i := range DFTMatrix.Value {
 				values = DFTMatrix.Value[i].Evaluate(values, newVec, add, muladd)
 			}
 
-			pWant := hefloat.GetPrecisionStats(tc.params, tc.encoder, nil, values, el.Value[0], 0, false)
-			pHave := hefloat.GetPrecisionStats(tc.params, tc.encoder, tc.decryptor, values, ct, 0, false)
+			if elImag != nil{
 
-			addStats(&statsWant, &pWant, &statsWant)
-			addStats(&statsHave, &pHave, &statsHave)
+				elReal.Decrypt()
+				elReal.Normalize()
+
+				two := new(big.Float).SetInt64(2)
+				for i := range values{
+					values[i][0].Mul(values[i][0], two)
+					values[i][1].Mul(values[i][1], two)
+				}
+
+				valuesReal := make([]*bignum.Complex, len(values))
+				for i := range valuesReal{
+					valuesReal[i] = &bignum.Complex{
+						values[i][0],
+						new(big.Float),
+					}
+				}
+
+				pWantReal := hefloat.GetPrecisionStats(tc.params, tc.encoder, nil, valuesReal, elReal.Value[0], 0, false)
+				pHaveReal := hefloat.GetPrecisionStats(tc.params, tc.encoder, tc.decryptor, valuesReal, ctReal, 0, false)
+
+				statsWant.Add(pWantReal)
+				statsHave.Add(pHaveReal)
+
+				valuesImag := make([]*bignum.Complex, len(values))
+				for i := range valuesImag{
+					valuesImag[i] = &bignum.Complex{
+						values[i][1],
+						new(big.Float),
+					}
+				}
+
+				elImag.Decrypt()
+				elImag.Normalize()
+
+				pWantImag := hefloat.GetPrecisionStats(tc.params, tc.encoder, nil, valuesImag, elImag.Value[0], 0, false)
+				pHaveImag := hefloat.GetPrecisionStats(tc.params, tc.encoder, tc.decryptor, valuesImag, ctImag, 0, false)
+				statsWant.Add(pWantImag)
+				statsHave.Add(pHaveImag)
+
+			}else{
+
+				elReal.Decrypt()
+				elReal.Normalize()
+				
+				pWant := hefloat.GetPrecisionStats(tc.params, tc.encoder, nil, values, elReal.Value[0], 0, false)
+				pHave := hefloat.GetPrecisionStats(tc.params, tc.encoder, tc.decryptor, values, ctReal, 0, false)
+				statsWant.Add(pWant)
+				statsHave.Add(pHave)
+			}
 		}
 
-		statsDiv(&statsWant, new(big.Float).SetInt64(int64(d)))
-		statsDiv(&statsHave, new(big.Float).SetInt64(int64(d)))
+		statsWant.Finalize()
+		statsHave.Finalize()
 
 		fmt.Println(statsWant.String())
 		fmt.Println(statsHave.String())
@@ -306,8 +335,8 @@ func testLinearTransformation(tc testContext, t *testing.T) {
 
 		ltEval := hefloat.NewLinearTransformationEvaluator(tc.evaluator.WithKey(evk))
 
-		statsHave := newPrecisionStats()
-		statsWant := newPrecisionStats()
+		statsHave := estimator.Stats{}
+		statsWant := estimator.Stats{}
 
 		d := 8
 
@@ -326,12 +355,12 @@ func testLinearTransformation(tc testContext, t *testing.T) {
 			pWant := hefloat.GetPrecisionStats(tc.params, tc.encoder, nil, values, el.Value[0], 0, false)
 			pHave := hefloat.GetPrecisionStats(tc.params, tc.encoder, tc.decryptor, values, ct, 0, false)
 
-			addStats(&statsWant, &pWant, &statsWant)
-			addStats(&statsHave, &pHave, &statsHave)
+			statsWant.Add(pWant)
+			statsHave.Add(pHave)
 		}
 
-		statsDiv(&statsWant, new(big.Float).SetInt64(int64(d)))
-		statsDiv(&statsHave, new(big.Float).SetInt64(int64(d)))
+		statsWant.Finalize()
+		statsHave.Finalize()
 
 		fmt.Println(statsWant.String())
 		fmt.Println(statsHave.String())
@@ -342,8 +371,8 @@ func testKeySwitching(tc testContext, t *testing.T) {
 
 	t.Run("Rotate/sk", func(t *testing.T) {
 
-		statsHave := newPrecisionStats()
-		statsWant := newPrecisionStats()
+		statsHave := estimator.Stats{}
+		statsWant := estimator.Stats{}
 
 		d := 8
 
@@ -372,12 +401,12 @@ func testKeySwitching(tc testContext, t *testing.T) {
 			pWant := hefloat.GetPrecisionStats(tc.params, tc.encoder, nil, values, el.Value[0], 0, false)
 			pHave := hefloat.GetPrecisionStats(tc.params, tc.encoder, tc.decryptor, values, ct, 0, false)
 
-			addStats(&statsWant, &pWant, &statsWant)
-			addStats(&statsHave, &pHave, &statsHave)
+			statsWant.Add(pWant)
+			statsHave.Add(pHave)
 		}
 
-		statsDiv(&statsWant, new(big.Float).SetInt64(int64(d)))
-		statsDiv(&statsHave, new(big.Float).SetInt64(int64(d)))
+		statsWant.Finalize()
+		statsHave.Finalize()
 
 		fmt.Println(statsWant.String())
 		fmt.Println(statsHave.String())
@@ -388,8 +417,8 @@ func testChebyshevPowers(tc testContext, t *testing.T) {
 
 	t.Run("Chebyshev512Power/sk", func(t *testing.T) {
 
-		statsHave := newPrecisionStats()
-		statsWant := newPrecisionStats()
+		statsHave := estimator.Stats{}
+		statsWant := estimator.Stats{}
 
 		d := 16
 
@@ -431,12 +460,12 @@ func testChebyshevPowers(tc testContext, t *testing.T) {
 			pWant := hefloat.GetPrecisionStats(tc.params, tc.encoder, nil, values, el.Value[0], 0, false)
 			pHave := hefloat.GetPrecisionStats(tc.params, tc.encoder, tc.decryptor, values, ct, 0, false)
 
-			addStats(&statsWant, &pWant, &statsWant)
-			addStats(&statsHave, &pHave, &statsHave)
+			statsWant.Add(pWant)
+			statsHave.Add(pHave)
 		}
 
-		statsDiv(&statsWant, new(big.Float).SetInt64(int64(d)))
-		statsDiv(&statsHave, new(big.Float).SetInt64(int64(d)))
+		statsWant.Finalize()
+		statsHave.Finalize()
 
 		fmt.Println(statsWant.String())
 		fmt.Println(statsHave.String())
@@ -444,8 +473,8 @@ func testChebyshevPowers(tc testContext, t *testing.T) {
 
 	t.Run("Chebyshev512Power/pk", func(t *testing.T) {
 
-		statsHave := newPrecisionStats()
-		statsWant := newPrecisionStats()
+		statsHave := estimator.Stats{}
+		statsWant := estimator.Stats{}
 
 		d := 16
 
@@ -487,12 +516,12 @@ func testChebyshevPowers(tc testContext, t *testing.T) {
 			pWant := hefloat.GetPrecisionStats(tc.params, tc.encoder, nil, values, el.Value[0], 0, false)
 			pHave := hefloat.GetPrecisionStats(tc.params, tc.encoder, tc.decryptor, values, ct, 0, false)
 
-			addStats(&statsWant, &pWant, &statsWant)
-			addStats(&statsHave, &pHave, &statsHave)
+			statsWant.Add(pWant)
+			statsHave.Add(pHave)
 		}
 
-		statsDiv(&statsWant, new(big.Float).SetInt64(int64(d)))
-		statsDiv(&statsHave, new(big.Float).SetInt64(int64(d)))
+		statsWant.Finalize()
+		statsHave.Finalize()
 
 		fmt.Println(statsWant.String())
 		fmt.Println(statsHave.String())
@@ -511,8 +540,8 @@ func testChebyshevPolynomialEvaluation(tc testContext, t *testing.T) {
 
 	t.Run("ChebyshevPolynomialEvaluation/sk", func(t *testing.T) {
 
-		statsHave := newPrecisionStats()
-		statsWant := newPrecisionStats()
+		statsHave := estimator.Stats{}
+		statsWant := estimator.Stats{}
 
 		d := 1
 
@@ -567,12 +596,12 @@ func testChebyshevPolynomialEvaluation(tc testContext, t *testing.T) {
 			pWant := hefloat.GetPrecisionStats(tc.params, tc.encoder, nil, values, el.Value[0], 0, false)
 			pHave := hefloat.GetPrecisionStats(tc.params, tc.encoder, tc.decryptor, values, ct, 0, false)
 
-			addStats(&statsWant, &pWant, &statsWant)
-			addStats(&statsHave, &pHave, &statsHave)
+			statsWant.Add(pWant)
+			statsHave.Add(pHave)
 		}
 
-		statsDiv(&statsWant, new(big.Float).SetInt64(int64(d)))
-		statsDiv(&statsHave, new(big.Float).SetInt64(int64(d)))
+		statsWant.Finalize()
+		statsHave.Finalize()
 
 		fmt.Println(statsWant.String())
 		fmt.Println(statsHave.String())
@@ -598,74 +627,6 @@ func GetChebyshevPoly(K float64, degree int, f64 func(x float64) (y float64)) bi
 
 	// Returns the polynomial.
 	return bignum.ChebyshevApproximation(FBig, interval)
-}
-
-func statsDiv(a *ckks.PrecisionStats, b *big.Float) {
-	a.MaxDelta.Real.Quo(a.MaxDelta.Real, b)
-	a.MaxDelta.Imag.Quo(a.MaxDelta.Imag, b)
-	a.MaxDelta.L2.Quo(a.MaxDelta.L2, b)
-
-	a.MinDelta.Real.Quo(a.MinDelta.Real, b)
-	a.MinDelta.Imag.Quo(a.MinDelta.Imag, b)
-	a.MinDelta.L2.Quo(a.MinDelta.L2, b)
-
-	a.MaxPrecision.Real.Quo(a.MaxPrecision.Real, b)
-	a.MaxPrecision.Imag.Quo(a.MaxPrecision.Imag, b)
-	a.MaxPrecision.L2.Quo(a.MaxPrecision.L2, b)
-
-	a.MinPrecision.Real.Quo(a.MinPrecision.Real, b)
-	a.MinPrecision.Imag.Quo(a.MinPrecision.Imag, b)
-	a.MinPrecision.L2.Quo(a.MinPrecision.L2, b)
-
-	a.MeanDelta.Real.Quo(a.MeanDelta.Real, b)
-	a.MeanDelta.Imag.Quo(a.MeanDelta.Imag, b)
-	a.MeanDelta.L2.Quo(a.MeanDelta.L2, b)
-
-	a.MeanPrecision.Real.Quo(a.MeanPrecision.Real, b)
-	a.MeanPrecision.Imag.Quo(a.MeanPrecision.Imag, b)
-	a.MeanPrecision.L2.Quo(a.MeanPrecision.L2, b)
-
-	a.MedianDelta.Real.Quo(a.MedianDelta.Real, b)
-	a.MedianDelta.Imag.Quo(a.MedianDelta.Imag, b)
-	a.MedianDelta.L2.Quo(a.MedianDelta.L2, b)
-
-	a.MedianPrecision.Real.Quo(a.MedianPrecision.Real, b)
-	a.MedianPrecision.Imag.Quo(a.MedianPrecision.Imag, b)
-	a.MedianPrecision.L2.Quo(a.MedianPrecision.L2, b)
-}
-
-func addStats(a, b, c *ckks.PrecisionStats) {
-	c.MaxDelta.Real.Add(a.MaxDelta.Real, b.MaxDelta.Real)
-	c.MaxDelta.Imag.Add(a.MaxDelta.Imag, b.MaxDelta.Imag)
-	c.MaxDelta.L2.Add(a.MaxDelta.L2, b.MaxDelta.L2)
-
-	c.MinDelta.Real.Add(a.MinDelta.Real, b.MinDelta.Real)
-	c.MinDelta.Imag.Add(a.MinDelta.Imag, b.MinDelta.Imag)
-	c.MinDelta.L2.Add(a.MinDelta.L2, b.MinDelta.L2)
-
-	c.MaxPrecision.Real.Add(a.MaxPrecision.Real, b.MaxPrecision.Real)
-	c.MaxPrecision.Imag.Add(a.MaxPrecision.Imag, b.MaxPrecision.Imag)
-	c.MaxPrecision.L2.Add(a.MaxPrecision.L2, b.MaxPrecision.L2)
-
-	c.MinPrecision.Real.Add(a.MinPrecision.Real, b.MinPrecision.Real)
-	c.MinPrecision.Imag.Add(a.MinPrecision.Imag, b.MinPrecision.Imag)
-	c.MinPrecision.L2.Add(a.MinPrecision.L2, b.MinPrecision.L2)
-
-	c.MeanDelta.Real.Add(a.MeanDelta.Real, b.MeanDelta.Real)
-	c.MeanDelta.Imag.Add(a.MeanDelta.Imag, b.MeanDelta.Imag)
-	c.MeanDelta.L2.Add(a.MeanDelta.L2, b.MeanDelta.L2)
-
-	c.MeanPrecision.Real.Add(a.MeanPrecision.Real, b.MeanPrecision.Real)
-	c.MeanPrecision.Imag.Add(a.MeanPrecision.Imag, b.MeanPrecision.Imag)
-	c.MeanPrecision.L2.Add(a.MeanPrecision.L2, b.MeanPrecision.L2)
-
-	c.MedianDelta.Real.Add(a.MedianDelta.Real, b.MedianDelta.Real)
-	c.MedianDelta.Imag.Add(a.MedianDelta.Imag, b.MedianDelta.Imag)
-	c.MedianDelta.L2.Add(a.MedianDelta.L2, b.MedianDelta.L2)
-
-	c.MedianPrecision.Real.Add(a.MedianPrecision.Real, b.MedianPrecision.Real)
-	c.MedianPrecision.Imag.Add(a.MedianPrecision.Imag, b.MedianPrecision.Imag)
-	c.MedianPrecision.L2.Add(a.MedianPrecision.L2, b.MedianPrecision.L2)
 }
 
 func TestEncryptPK(t *testing.T) {

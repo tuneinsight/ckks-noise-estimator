@@ -86,3 +86,112 @@ func NewFloat(x interface{}) (s *big.Float) {
 		panic(fmt.Errorf("invalid x.(type): must be int, int64, uint64, float64, *big.Int or *big.Float but is %T", x))
 	}
 }
+
+func Log2MIN(x []*bignum.Complex) (real, img float64){
+
+	minR := new(big.Float)
+	minI := new(big.Float)
+	tmp := new(big.Float)
+
+	for i := range x{
+
+		tmp.Abs(x[i][0])
+
+		if minR.Cmp(tmp) == 1{
+			minR.Set(tmp)
+		}
+
+		tmp.Abs(x[i][1])
+
+		if minI.Cmp(tmp) == 1{
+			minI.Set(tmp)
+		}
+	}
+
+	minRF64, _ := minR.Float64()
+	minIF64, _ := minI.Float64()
+
+	return math.Log2(minRF64), math.Log2(minIF64)
+}
+
+func Log2MAX(x []*bignum.Complex) (real, img float64){
+
+	maxR := new(big.Float)
+	maxI := new(big.Float)
+	tmp := new(big.Float)
+
+	for i := range x{
+
+		tmp.Abs(x[i][0])
+
+		if maxR.Cmp(tmp) == -1{
+			maxR.Set(tmp)
+		}
+
+		tmp.Abs(x[i][1])
+
+		if maxI.Cmp(tmp) == -1{
+			maxI.Set(tmp)
+		}
+	}
+
+	maxRF64, _ := maxR.Float64()
+	maxIF64, _ := maxI.Float64()
+
+	return math.Log2(maxRF64), math.Log2(maxIF64)
+}
+
+func Log2AVG(x []*bignum.Complex) (real, img float64){
+	n := new(big.Float).SetInt64(int64(len(x)))
+
+	meanR := new(big.Float).SetPrec(x[0].Prec())
+	meanI := new(big.Float).SetPrec(x[0].Prec())
+
+	for i := range x{
+		meanR.Add(meanR, x[i][0])
+		meanI.Add(meanI, x[i][1])
+	}
+
+	meanR.Quo(meanR, n)
+	meanI.Quo(meanI, n)
+
+	avgRF64, _ := meanR.Float64()
+	avgIF64, _ := meanI.Float64()
+
+	return avgRF64, avgIF64
+}
+
+func Log2STD(x []*bignum.Complex) (real, img float64){
+
+	n := new(big.Float).SetInt64(int64(len(x)))
+
+	meanR := new(big.Float).SetPrec(x[0].Prec())
+	meanI := new(big.Float).SetPrec(x[0].Prec())
+
+	for i := range x{
+		meanR.Add(meanR, x[i][0])
+		meanI.Add(meanI, x[i][1])
+	}
+
+	meanR.Quo(meanR, n)
+	meanI.Quo(meanI, n)
+
+	stdR := new(big.Float).SetPrec(x[0].Prec())
+	stdI := new(big.Float).SetPrec(x[0].Prec())
+	tmp := new(big.Float)
+
+	for i := range x{
+		tmp.Sub(x[i][0], meanR)
+		tmp.Mul(tmp, tmp)
+		stdR.Add(stdR, tmp)
+
+		tmp.Sub(x[i][1], meanI)
+		tmp.Mul(tmp, tmp)
+		stdI.Add(stdI, tmp)
+	}
+
+	stdRF64, _ := stdR.Sqrt(stdR).Float64()
+	stdIF64, _ := stdI.Sqrt(stdI).Float64()
+
+	return math.Log2(stdRF64), math.Log2(stdIF64)
+}

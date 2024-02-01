@@ -197,6 +197,17 @@ func (p Parameters) KeySwitchingNoiseRaw(levelQ int, eCt, sk []*bignum.Complex) 
 
 		p.AddNoiseRingToCanonical(f64*p.Sigma, e)
 
+		/*
+		stdR, stdI := Log2STD(e)
+		maxR, maxI := Log2MAX(e)
+		avgR, avgI := Log2AVG(e)
+
+		fmt.Println(stdR, stdI)
+		fmt.Println(maxR, maxI)
+		fmt.Println(avgR, avgI)
+		fmt.Println()
+		*/
+
 	} else {
 		for i := 0; i < decompRNS; i++ {
 
@@ -235,6 +246,17 @@ func (p Parameters) KeySwitchingNoiseRaw(levelQ int, eCt, sk []*bignum.Complex) 
 				e[i].Add(e[i], ei[i])
 			}
 		}
+
+		/*
+		stdR, stdI := Log2STD(e)
+		maxR, maxI := Log2MAX(e)
+		avgR, avgI := Log2AVG(e)
+
+		fmt.Println(stdR, stdI)
+		fmt.Println(maxR, maxI)
+		fmt.Println(avgR, avgI)
+		fmt.Println()
+		*/
 	}
 
 	return

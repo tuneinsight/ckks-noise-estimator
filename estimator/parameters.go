@@ -91,6 +91,7 @@ func NewParameters(p hefloat.Parameters) Parameters {
 		LevelP:     len(P) - 1,
 		Scale:      p.DefaultScale(),
 		Sk:         [][]*bignum.Complex{sk, sk2},
+		Heuristic:  true,
 	}
 }
 

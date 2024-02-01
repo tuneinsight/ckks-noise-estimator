@@ -256,7 +256,7 @@ func EvaluatePolynomialVectorFromPowerBasis[T any](targetLevel int, pol he.Polyn
 		}
 
 		// Allocates the output ciphertext
-		res := NewElement(params, make([]float64, params.MaxSlots()), maximumCiphertextDegree, targetScale)
+		res = NewElement(params, make([]float64, params.MaxSlots()), maximumCiphertextDegree, targetScale)
 		res.Level = targetLevel
 
 		if even {
@@ -284,7 +284,7 @@ func EvaluatePolynomialVectorFromPowerBasis[T any](targetLevel int, pol he.Polyn
 			return
 		}
 
-		res := NewElement(params, make([]float64, params.MaxSlots()), maximumCiphertextDegree, targetScale)
+		res = NewElement[*bignum.Complex](params, nil, maximumCiphertextDegree, targetScale)
 		res.Level = targetLevel
 
 		if even {
@@ -297,6 +297,7 @@ func EvaluatePolynomialVectorFromPowerBasis[T any](targetLevel int, pol he.Polyn
 				res.MulThenAdd(X[key], cg.GetSingleCoefficient(pol.Value[0], key))
 			}
 		}
+
 
 	}
 

@@ -172,7 +172,7 @@ func (p *Element) AddRelinearizationNoise() {
 	m1 := p.Value[1]
 	for i := range m0 {
 		m0[i].Add(m0[i], e0[i])
-		m1[i].Add(m0[i], e1[i])
+		m1[i].Add(m1[i], e1[i])
 	}
 }
 

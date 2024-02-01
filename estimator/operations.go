@@ -66,7 +66,7 @@ func (p *Element) Add(op0 *Element, op1 rlwe.Operand) *Element {
 			}
 		}
 
-	case complex128, float64, int, int64, uint, *big.Int, *big.Float, *bignum.Complex:
+	case complex128, float64, int, int64, uint, uint64, *big.Int, *big.Float, *bignum.Complex:
 
 		m0 := op0.Value[0]
 		m2 := p.Value[0]
@@ -148,7 +148,7 @@ func (p *Element) Sub(op0 *Element, op1 rlwe.Operand) *Element {
 			}
 		}
 
-	case complex128, float64, int, int64, uint, *big.Int, *big.Float, *bignum.Complex:
+	case complex128, float64, int, int64, uint, uint64, *big.Int, *big.Float, *bignum.Complex:
 
 		m0 := op0.Value[0]
 		m2 := p.Value[0]
@@ -215,7 +215,7 @@ func (p *Element) Mul(op0 *Element, op1 rlwe.Operand) *Element {
 		p.Level = utils.Min(op0.Level, op1.Level)
 		p.Degree = op0.Degree + op1.Degree
 
-	case complex128, float64, int, int64, uint, *big.Int, *big.Float, *bignum.Complex:
+	case complex128, float64, int, int64, uint, uint64, *big.Int, *big.Float, *bignum.Complex:
 
 		bComplex := bignum.ToComplex(op1, p.Value[0][0].Prec())
 
@@ -327,7 +327,7 @@ func (p *Element) MulThenAdd(op0 *Element, op1 rlwe.Operand) *Element {
 			}
 		}
 
-	case complex128, float64, int, int64, uint, *big.Int, *big.Float, *bignum.Complex:
+	case complex128, float64, int, int64, uint, uint64, *big.Int, *big.Float, *bignum.Complex:
 
 		p.Degree = utils.Max(p.Degree, op0.Degree)
 		p.Level = utils.Min(p.Level, op0.Level)
@@ -380,6 +380,11 @@ func (p *Element) MulThenAdd(op0 *Element, op1 rlwe.Operand) *Element {
 	}
 
 	return p
+}
+
+func (p *Element) ScaleUp(scale rlwe.Scale){
+	p.Mul(p, scale.Uint64())
+	p.Scale = p.Scale.Mul(scale)
 }
 
 func (p *Element) Rotate(k int) *Element {

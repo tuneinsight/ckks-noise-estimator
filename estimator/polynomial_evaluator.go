@@ -3,6 +3,7 @@ package estimator
 import (
 	"fmt"
 	"math/bits"
+	"runtime"
 
 	"github.com/tuneinsight/lattigo/v5/core/rlwe"
 	"github.com/tuneinsight/lattigo/v5/he"
@@ -61,6 +62,9 @@ func (p *Element) EvaluatePolynomial(poly interface{}, targetScale rlwe.Scale) (
 	if opOut, err = EvaluatePatersonStockmeyerPolynomialVector(PS, coeffGetter, *powerbasis); err != nil {
 		return nil, err
 	}
+
+	powerbasis = nil
+	runtime.GC()
 
 	return opOut, err
 }

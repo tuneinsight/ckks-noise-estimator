@@ -34,9 +34,7 @@ func ToLaTeXTable(LogN, LogScale int, predicted, actual Stats) string{
         $\log_{2}$ & real & imag & l2 & real & imag & l2\\
         \hline
         Min & %5.2f & %5.2f & %5.2f & %5.2f & %5.2f & %5.2f \\
-        Max & %5.2f & %5.2f & %5.2f & %5.2f & %5.2f & %5.2f \\
         AVG & %5.2f & %5.2f & %5.2f & %5.2f & %5.2f & %5.2f \\
-        MED & %5.2f & %5.2f & %5.2f & %5.2f & %5.2f & %5.2f \\
         STD & %5.2f & %5.2f & %5.2f & %5.2f & %5.2f & %5.2f \\
         \hline
     \end{tabular}
@@ -46,12 +44,8 @@ func ToLaTeXTable(LogN, LogScale int, predicted, actual Stats) string{
 `,
 	predicted.MINLog2Prec.Real, predicted.MINLog2Prec.Imag, predicted.MINLog2Prec.L2, 
 	actual.MINLog2Prec.Real, actual.MINLog2Prec.Imag, actual.MINLog2Prec.L2,
-	predicted.MAXLog2Prec.Real, predicted.MAXLog2Prec.Imag, predicted.MAXLog2Prec.L2, 
-	actual.MAXLog2Prec.Real, actual.MAXLog2Prec.Imag, actual.MAXLog2Prec.L2, 
 	predicted.AVGLog2Prec.Real, predicted.AVGLog2Prec.Imag, predicted.AVGLog2Prec.L2, 
 	actual.AVGLog2Prec.Real, actual.AVGLog2Prec.Imag, actual.AVGLog2Prec.L2, 
-	predicted.MEDLog2Prec.Real, predicted.MEDLog2Prec.Imag, predicted.MEDLog2Prec.L2, 
-	actual.MEDLog2Prec.Real, actual.MEDLog2Prec.Imag, actual.MEDLog2Prec.L2, 
 	predicted.STDLog2Prec.Real, predicted.STDLog2Prec.Imag, predicted.STDLog2Prec.L2, 
 	actual.STDLog2Prec.Real, actual.STDLog2Prec.Imag, actual.STDLog2Prec.L2,
 	LogN, LogScale)

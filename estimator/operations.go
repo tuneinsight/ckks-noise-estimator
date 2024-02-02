@@ -387,6 +387,17 @@ func (p *Element) ScaleUp(scale rlwe.Scale){
 	p.Scale = p.Scale.Mul(scale)
 }
 
+func (p *Element) SetScale(scale rlwe.Scale){
+	ratioFlo := scale.Div(p.Scale).Value
+	p.Mul(p, &ratioFlo)
+
+	if !ratioFlo.IsInt(){
+		p.Rescale()
+	}
+
+	p.Scale = scale
+}
+
 func (p *Element) Rotate(k int) *Element {
 
 	if p.Degree != 1 {

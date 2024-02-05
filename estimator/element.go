@@ -139,6 +139,15 @@ func (p *Element) AddEncryptionNoisePk() {
 	p.AddRoundingNoise()
 }
 
+func (p *Element) AddKeySwitchingNoise(sk []*bignum.Complex){
+	e0, e1 := p.KeySwitchingNoise(p.Level, p.Value[1], sk)
+	m0, m1 := p.Value[0], p.Value[1]
+	for i := range m0 {
+		m0[i].Add(m0[i], e0[i])
+		m1[i].Set(e1[i])
+	}
+}
+
 // AddAutomorphismNoise sets the noise to the key-switching noise, which is
 // (p[0], p[1]) = (p[0] + p[1] * sk + round(sum(e_i * qalphai)/P), round(1/2))
 func (p *Element) AddAutomorphismNoise() {

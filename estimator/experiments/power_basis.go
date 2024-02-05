@@ -2,7 +2,7 @@ package main
 
 import (
 	"fmt"
-
+	"time"
 	"github.com/tuneinsight/ckks-bootstrapping-precision/estimator"
 	"github.com/tuneinsight/lattigo/v5/core/rlwe"
 	"github.com/tuneinsight/lattigo/v5/he/hefloat"
@@ -16,7 +16,7 @@ func main() {
 
 	params, err := hefloat.NewParametersFromLiteral(hefloat.ParametersLiteral{
 		LogN:            LogN,
-		LogQ:            []int{55, 45, 45, 45, 45, 45, 45, 45, 45, 45, 45, 45},
+		LogQ:            []int{55, 45, 45, 45, 45, 45, 45, 45, 45, 45, 45, 45, 45},
 		LogP:            []int{60},
 		LogDefaultScale: LogScale,
 	})
@@ -43,9 +43,11 @@ func main() {
 
 	mul := bignum.NewComplexMultiplier().Mul
 
-	n := 11
+	n := 12
 
 	for i := 0; i < 128; i++ {
+
+		fmt.Println(i)
 
 		values, el, _, ct := estParams.NewTestVector(ecd, enc, -1, 1)
 
@@ -58,13 +60,18 @@ func main() {
 		}
 
 		pbCt := hefloat.NewPowerBasis(ct, bignum.Chebyshev)
+		runTimed(func(){
 		if err := pbCt.GenPower(1<<n, false, eval); err != nil {
 			panic(err)
-		}
+		}})
+
 		ct = pbCt.Value[1<<n]
 
 		pbEl := estimator.NewPowerBasis(el, bignum.Chebyshev)
-		pbEl.GenPower(1<<n, false)
+
+		runTimed(func(){
+			pbEl.GenPower(1<<n, false)
+		})
 		el = pbEl.Value[1<<n]
 
 		el.Decrypt()
@@ -84,6 +91,12 @@ func main() {
 	fmt.Println(statsHave.String())
 
 	fmt.Println(estimator.ToLaTeXTable(LogN, LogScale, statsWant, statsHave))
+}
+
+func runTimed(f func()){
+	now := time.Now()
+	f()
+	fmt.Println(time.Since(now))
 }
 
 /*

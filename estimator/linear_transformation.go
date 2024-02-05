@@ -29,10 +29,13 @@ func (p *Element) EvaluateLinearTransformation(lt LinearTransformation) *Element
 	ctPreRot := map[int]*Element{}
 
 	for _, k := range rotN2 {
-		if _, ok := ctPreRot[k]; k != 0 && !ok {
-			ctPreRot[k] = p.CopyNew()
-			ctPreRot[k].RotateHoisted(k)
+		if k != 0{
+			if _, ok := ctPreRot[k]; k != 0 && !ok {
+				ctPreRot[k] = p.CopyNew()
+				ctPreRot[k].RotateHoisted(k)
+			}
 		}
+		
 	}
 
 	ctPreRot[0] = p.CopyNew().Mul(p, p.P)
@@ -55,13 +58,10 @@ func (p *Element) EvaluateLinearTransformation(lt LinearTransformation) *Element
 
 			utils.RotateSliceAllocFree(lt.Value[i+j], rot, tmp)
 
-			pt := NewElement(*p.Parameters, tmp, 0, lt.Scale)
-			pt.AddEncodingNoise()
-
 			if cnt == 0 {
-				acc.Mul(ctPreRot[i], pt)
+				acc.Mul(ctPreRot[i], tmp)
 			} else {
-				acc.MulThenAdd(ctPreRot[i], pt)
+				acc.MulThenAdd(ctPreRot[i], tmp)
 			}
 
 			cnt++

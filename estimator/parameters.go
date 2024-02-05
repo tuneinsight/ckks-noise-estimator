@@ -25,27 +25,56 @@ type Parameters struct {
 	Heuristic bool
 }
 
-func NewParameters(p hefloat.Parameters) Parameters {
+func NewParameters(p hefloat.Parameters) (params Parameters) {
+
+	params = Parameters{}
+	params.Parameters = p
+	params.LogN = p.LogN()
+	params.Sigma = p.NoiseFreshSK()
+	params.Scale = p.DefaultScale()
+	params.Heuristic = true
 
 	Q := p.Q()
 	P := p.P()
 
 	Qi := make([]*big.Float, len(Q))
-
 	for i := range Q {
 		Qi[i] = NewFloat(Q[i])
 	}
+	params.Q = Qi
 
 	Pi := NewFloat(1)
 	for i := range P {
 		Pi.Mul(Pi, NewFloat(P[i]))
 	}
+	params.P = Pi
+	params.LevelP =  len(P) - 1
 
-	Encoder := NewEncoder(p.LogN(), prec)
+	params.Encoder = *NewEncoder(p.LogN(), prec)
+
+	params.H = utils.Min(p.N(), p.XsHammingWeight())
 
 	// Samples a secret-key
+	sk := params.SampleSecretKey(params.H)
+
+	mul := bignum.NewComplexMultiplier().Mul
+	sk2 := make([]*bignum.Complex, p.MaxSlots())
+	for i := range sk2 {
+		sk2[i] = &bignum.Complex{NewFloat(0), NewFloat(0)}
+		mul(sk[i], sk[i], sk2[i])
+	}
+
+	params.Sk = [][]*bignum.Complex{sk, sk2}
+
+	return 
+}
+
+func (p Parameters) SampleSecretKey(H int) (sk []*bignum.Complex) {
+
 	N := p.N()
-	H := utils.Min(N, p.XsHammingWeight())
+
+	H = utils.Min(N, H)
+
 	skF := make([]*big.Float, N)
 	for i := 0; i < H; i++ {
 		if i&1 == 0 {
@@ -63,36 +92,17 @@ func NewParameters(p hefloat.Parameters) Parameters {
 
 	r.Shuffle(len(skF), func(i, j int) { skF[i], skF[j] = skF[j], skF[i] })
 
-	sk := make([]*bignum.Complex, p.MaxSlots())
+	sk = make([]*bignum.Complex, p.MaxSlots())
 	for i := range sk {
 		sk[i] = &bignum.Complex{skF[2*i], skF[2*i+1]}
 	}
 
 	// R[X]/(X^N+1) -> C^N/2
-	if err := Encoder.FFT(sk, p.LogMaxSlots()); err != nil {
+	if err := p.Encoder.FFT(sk, p.LogMaxSlots()); err != nil {
 		panic(err)
 	}
 
-	mul := bignum.NewComplexMultiplier().Mul
-	sk2 := make([]*bignum.Complex, p.MaxSlots())
-	for i := range sk2 {
-		sk2[i] = &bignum.Complex{NewFloat(0), NewFloat(0)}
-		mul(sk[i], sk[i], sk2[i])
-	}
-
-	return Parameters{
-		Parameters: p,
-		LogN:       p.LogN(),
-		Sigma:      p.NoiseFreshSK(),
-		H:          H,
-		Encoder:    *Encoder,
-		Q:          Qi,
-		P:          Pi,
-		LevelP:     len(P) - 1,
-		Scale:      p.DefaultScale(),
-		Sk:         [][]*bignum.Complex{sk, sk2},
-		Heuristic:  true,
-	}
+	return
 }
 
 func (p Parameters) N() int {

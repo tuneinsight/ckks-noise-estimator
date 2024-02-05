@@ -40,6 +40,7 @@ func (el *Element) EvaluateMod1AndScale(evm hefloat.Mod1Parameters, scaling comp
 	// Stores default scales
 	prevScaleCt := el.Scale
 
+
 	// Normalize the modular reduction to mod by 1 (division by Q)
 	el.Scale = evm.ScalingFactor()
 
@@ -50,8 +51,6 @@ func (el *Element) EvaluateMod1AndScale(evm hefloat.Mod1Parameters, scaling comp
 	params := el.Parameters.Parameters
 
 	Qi := params.Q()
-
-
 
 	targetScale := el.Scale
 	for i := 0; i < evm.DoubleAngle; i++ {
@@ -129,5 +128,6 @@ func (el *Element) EvaluateMod1AndScale(evm hefloat.Mod1Parameters, scaling comp
 
 	// Multiplies back by q
 	el.Scale = prevScaleCt
+
 	return el, nil
 }

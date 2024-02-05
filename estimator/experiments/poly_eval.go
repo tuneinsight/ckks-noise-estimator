@@ -18,7 +18,7 @@ func main() {
 
 	params, err := hefloat.NewParametersFromLiteral(hefloat.ParametersLiteral{
 		LogN:            LogN,
-		LogQ:            []int{55, 45, 45, 45, 45, 45, 45, 45},
+		LogQ:            []int{55, 45, 45, 45, 45, 45, 45, 45, 45, 45},
 		LogP:            []int{60},
 		LogDefaultScale: LogScale,
 	})
@@ -49,9 +49,9 @@ func main() {
 		return 1 / (math.Exp(-x) + 1)
 	}
 
-	deg := 63
+	deg := 255
 
-	k := 16.0
+	k := 32.0
 
 	poly := hefloat.NewPolynomial(GetChebyshevPoly(k, deg, f))
 
@@ -59,7 +59,9 @@ func main() {
 
 	for i := 0; i < 128; i++ {
 
-		values, el, _, ct := estParams.NewTestVector(ecd, enc, -1, 1)
+		fmt.Println(i)
+
+		values, el, _, ct := estParams.NewTestVector(ecd, enc, complex(-k, 0), complex(k, 0))
 
 		for i := range values {
 			values[i] = poly.Evaluate(values[i])

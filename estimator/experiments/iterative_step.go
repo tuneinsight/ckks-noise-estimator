@@ -54,7 +54,7 @@ func main() {
 
 	polyEval := hefloat.NewPolynomialEvaluator(params, eval)
 
-	for i := 0; i < 128; i++ {
+	for i := 0; i < 1; i++ {
 		fmt.Println(i)
 
 		values, el, _, ct := NewTestVector(estParams, ecd, enc, -0.2, 0.2)
@@ -84,7 +84,7 @@ func main() {
 		el.Normalize()
 
 		pWant := hefloat.GetPrecisionStats(params, ecd, dec, values, el.Value[0], 0, false)
-		pHave := hefloat.GetPrecisionStats(params, ecd, dec, values, ct, 0, false)
+		pHave := hefloat.GetPrecisionStats(params, ecd, dec, el.Value[0], ct, 0, false)
 
 		statsWant.Add(pWant)
 		statsHave.Add(pHave)

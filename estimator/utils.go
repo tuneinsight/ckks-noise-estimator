@@ -55,6 +55,12 @@ const (
 	prec = uint(128)
 )
 
+func Round(x *big.Float){
+	x.Add(x, new(big.Float).SetFloat64(0.5*float64(x.Sign())))
+	xint, _ := x.Int(nil)
+	x.SetInt(xint)
+}
+
 func DecompRNS(levelQ, levelP int) int {
 	return (levelQ + levelP + 1) / (levelP + 1)
 }

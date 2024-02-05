@@ -80,6 +80,20 @@ func (p *Element) Add(op0 *Element, op1 rlwe.Operand) *Element {
 			m2[i].Add(m0[i], bComplex)
 		}
 
+	case []*bignum.Complex:
+		
+		bComplex := &bignum.Complex{new(big.Float).SetPrec(prec), new(big.Float).SetPrec(prec)}
+
+		for i := range op1{
+			bComplex[0].Mul(op1[i][0], &p.Scale.Value)
+			bComplex[1].Mul(op1[i][1], &p.Scale.Value)
+			Round(bComplex[0])
+			Round(bComplex[1])
+
+			p.Value[0][i][0].Add(p.Value[0][i][0], bComplex[0])
+			p.Value[0][i][1].Add(p.Value[0][i][1], bComplex[1])
+		}
+
 	default:
 		panic(fmt.Errorf("invalid op1.(type): must be *Element, complex128, float64, int, int64, uint, uint64, *big.Int, *big.Float, *bignum.Complex, []complex128, []float64, []*big.Float or []*bignum.Complex, but is %T", op1))
 	}
@@ -237,6 +251,21 @@ func (p *Element) Mul(op0 *Element, op1 rlwe.Operand) *Element {
 
 		p.Degree = op0.Degree
 
+	case []*bignum.Complex:
+
+		bComplex := &bignum.Complex{new(big.Float).SetPrec(prec), new(big.Float).SetPrec(prec)}
+
+		scale := p.Q[p.Level]
+		p.Scale = op0.Scale.Mul(rlwe.NewScale(scale))
+
+		for i := range op1{
+			bComplex[0].Mul(op1[i][0], scale)
+			bComplex[1].Mul(op1[i][1], scale)
+			for j := 0; j < op0.Degree+1; j++ {
+				mul(op0.Value[j][i], bComplex, p.Value[j][i])
+			}
+		}
+
 	default:
 		panic(fmt.Errorf("invalid op1.(type): must be *Element, complex128, float64, int, int64, uint, uint64, *big.Int, *big.Float, *bignum.Complex, []complex128, []float64, []*big.Float or []*bignum.Complex, but is %T", op1))
 	}
@@ -374,6 +403,25 @@ func (p *Element) MulThenAdd(op0 *Element, op1 rlwe.Operand) *Element {
 				m2[i].Add(m2[i], acc)
 			}
 		}
+	case []*bignum.Complex:
+
+		bComplex := &bignum.Complex{new(big.Float).SetPrec(prec), new(big.Float).SetPrec(prec)}
+
+		scale := p.Q[p.Level]
+		p.Scale = op0.Scale.Mul(rlwe.NewScale(scale))
+
+		acc := bignum.NewComplex()
+		r := p.RoundingNoise()
+
+		for i := range op1{
+			bComplex[0].Mul(op1[i][0], scale)
+			bComplex[1].Mul(op1[i][1], scale)
+			bComplex.Add(bComplex, r[i])
+			for j := 0; j < op0.Degree+1; j++ {
+				mul(op0.Value[j][i], bComplex, acc)
+				p.Value[j][i].Add(p.Value[j][i], acc)
+			}
+		}
 
 	default:
 		panic(fmt.Errorf("invalid op1.(type): must be *Element, complex128, float64, int, int64, uint, uint64, *big.Int, *big.Float, *bignum.Complex, []complex128, []float64, []*big.Float or []*bignum.Complex, but is %T", op1))
@@ -396,6 +444,14 @@ func (p *Element) SetScale(scale rlwe.Scale){
 	}
 
 	p.Scale = scale
+}
+
+func (p *Element) KeySwitch(sk []*bignum.Complex){
+	if p.Degree != 1 {
+		panic("cannot Rotate: Degree != 1")
+	}
+
+	p.AddKeySwitchingNoise(sk)
 }
 
 func (p *Element) Rotate(k int) *Element {

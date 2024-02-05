@@ -15,7 +15,7 @@ import (
 func main() {
 
 	LogN := 16
-	LogScale := 45
+	LogScale := 40
 
 	params, err := hefloat.NewParametersFromLiteral(hefloat.ParametersLiteral{
 		LogN:            LogN,
@@ -63,7 +63,7 @@ func main() {
 	statsHave := estimator.NewStats()
 	statsWant := estimator.NewStats()
 
-	for i := 0; i < 128; i++ {
+	for i := 0; i < 1; i++ {
 
 		values, el, _, ct := NewTestVectorsMod1(estParams, params, ecd, enc, evm, -1, 1)
 

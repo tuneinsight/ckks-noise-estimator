@@ -28,15 +28,17 @@ func (el *Element) DFT(mat DFTMatrix) *Element {
 	return el
 }
 
-func (el *Element) SlotsToCoeffs(elReal, elImag *Element, mat DFTMatrix) {
+func (el *Element) SlotsToCoeffs(elReal, elImag *Element, mat DFTMatrix) (*Element) {
+
 	if elImag != nil {
-		el.Mul(elImag, 1i)
-		el.Add(el, elReal)
+		el.MulThenAdd(elImag, 1i)
 	} else {
 		el = elReal
 	}
 
-	el.DFT(mat)
+	el = el.DFT(mat)
+
+	return el
 }
 
 func (el *Element) CoeffsToSlots(mat DFTMatrix) (elReal, elImag *Element) {

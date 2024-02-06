@@ -465,6 +465,7 @@ func (p *Element) Rotate(k int) *Element {
 	p.AddAutomorphismNoise()
 
 	utils.RotateSliceInPlace(p.Value[0], k)
+	utils.RotateSliceInPlace(p.Value[1], k)
 
 	return p
 }
@@ -500,26 +501,35 @@ func (p *Element) Relinearize() {
 
 // RotateHoisted applies a rotation without ModDown.
 // Returned element is scaled by P.
-func (p *Element) RotateHoisted(k int) {
+func (p *Element) RotateHoisted(k int) (value []*bignum.Complex) {
 
 	if p.Degree != 1 {
 		panic("cannot Rotate: Degree != 1")
 	}
 
 	// Scales first term by P
-	value := p.Value[0]
+	value = make([]*bignum.Complex, len(p.Value[0]))
+
+	pV := p.Value[0]
 	P := p.P
+
 	for i := range value {
-		value[i][0].Mul(value[i][0], P)
-		value[i][1].Mul(value[i][1], P)
+		value[i] = bignum.NewComplex()
+		value[i][0].Mul(pV[i][0], P)
+		value[i][1].Mul(pV[i][1], P)
 	}
 
 	// p.Value[1]: noise of the second component (s term)
 	// p.Sk[0]: sk^1
 	// Added noise is scaled by P
-	p.AddAutomorphismNoiseRaw()
+	e0 := p.KeySwitchingNoiseRaw(p.Level, p.Value[1], p.Sk[0])
+	for i := range value {
+		value[i].Add(value[i], e0[i])
+	}
 
-	utils.RotateSliceInPlace(p.Value[0], k)
+	utils.RotateSliceInPlace(value, k)
+
+	return value
 }
 
 // ModDown divides by P and adds rounding noise.

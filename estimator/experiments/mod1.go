@@ -7,7 +7,6 @@ import (
 	"github.com/tuneinsight/ckks-bootstrapping-precision/estimator"
 	"github.com/tuneinsight/lattigo/v5/he/hefloat"
 	"github.com/tuneinsight/lattigo/v5/core/rlwe"
-	"github.com/tuneinsight/lattigo/v5/ring"
 	"github.com/tuneinsight/lattigo/v5/utils/sampling"
 	"github.com/tuneinsight/lattigo/v5/utils/bignum"
 )
@@ -15,13 +14,12 @@ import (
 func main() {
 
 	LogN := 16
-	LogScale := 40
+	LogScale := 45
 
 	params, err := hefloat.NewParametersFromLiteral(hefloat.ParametersLiteral{
 		LogN:            LogN,
-		LogQ:            []int{55, 60, 60, 60, 60, 60, 60, 60, 60, 60, 60, 60, 60, 53},
+		LogQ:            []int{55, 60, 60, 60, 60, 60, 60, 60, 60, 53},
 		LogP:            []int{61, 61, 61, 61, 61},
-		Xs:              ring.Ternary{H: 192},
 		LogDefaultScale: LogScale,
 	})
 
@@ -41,7 +39,7 @@ func main() {
 	eval := hefloat.NewEvaluator(params, evk)
 
 	mod1Parameters := hefloat.Mod1ParametersLiteral{
-		LevelQ:          12,
+		LevelQ:          8,
 		Mod1Type:        hefloat.CosDiscrete,
 		LogMessageRatio: 8,
 		K:               12,
@@ -63,7 +61,7 @@ func main() {
 	statsHave := estimator.NewStats()
 	statsWant := estimator.NewStats()
 
-	for i := 0; i < 1; i++ {
+	for i := 0; i < 128; i++ {
 
 		values, el, _, ct := NewTestVectorsMod1(estParams, params, ecd, enc, evm, -1, 1)
 

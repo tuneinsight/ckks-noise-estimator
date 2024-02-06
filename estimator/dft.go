@@ -31,12 +31,10 @@ func (el *Element) DFT(mat DFTMatrix) *Element {
 func (el *Element) SlotsToCoeffs(elReal, elImag *Element, mat DFTMatrix) (*Element) {
 
 	if elImag != nil {
-		el.MulThenAdd(elImag, 1i)
-	} else {
-		el = elReal
+		elReal.MulThenAdd(elImag, 1i)
 	}
 
-	el = el.DFT(mat)
+	*el = *elReal.DFT(mat)
 
 	return el
 }

@@ -10,8 +10,8 @@ import (
 
 type LinearTransformation struct {
 	LogSlots                 int
-	Scale                    rlwe.Scale
 	LogBabyStepGianStepRatio int
+	Scale                    rlwe.Scale
 	Value                    hefloat.Diagonals[*bignum.Complex]
 }
 
@@ -26,28 +26,33 @@ func (p *Element) EvaluateLinearTransformation(lt LinearTransformation) *Element
 
 	index, _, rotN2 := lt.BSGSIndex()
 
-	ctPreRot := map[int]*Element{}
+	ctPreRot := map[int][]*bignum.Complex{}
 
 	for _, k := range rotN2 {
 		if k != 0{
 			if _, ok := ctPreRot[k]; k != 0 && !ok {
-				ctPreRot[k] = p.CopyNew()
-				ctPreRot[k].RotateHoisted(k)
+				ctPreRot[k] = p.RotateHoisted(k)
 			}
 		}
-		
 	}
 
-	ctPreRot[0] = p.CopyNew().Mul(p, p.P)
+	ctPreRot0 := p.CopyNew().Mul(p, p.P)
 
 	keys := utils.GetSortedKeys(index)
 
-	acc := NewElement[*bignum.Complex](*p.Parameters, nil, 1, p.Scale)
-	res := NewElement[*bignum.Complex](*p.Parameters, nil, 1, p.Scale)
-
+	scale := &lt.Scale.Value
 	slots := 1 << lt.LogSlots
 
+	acc := NewElement[*bignum.Complex](*p.Parameters, nil, 1, p.Scale.Mul(lt.Scale))
+	acc.Level = p.Level
+	res := NewElement[*bignum.Complex](*p.Parameters, nil, 1, p.Scale.Mul(lt.Scale))
+	res.Level = p.Level
 	tmp := make([]*bignum.Complex, slots)
+
+	bComplex := bignum.NewComplex()
+	dComplex := bignum.NewComplex()
+
+	mul := bignum.NewComplexMultiplier().Mul
 
 	for _, j := range keys {
 
@@ -58,21 +63,95 @@ func (p *Element) EvaluateLinearTransformation(lt LinearTransformation) *Element
 
 			utils.RotateSliceAllocFree(lt.Value[i+j], rot, tmp)
 
+			coeffsAcc0 := acc.Value[0]
+			coeffsAcc1 := acc.Value[1]
+
 			if cnt == 0 {
-				acc.Mul(ctPreRot[i], tmp)
+				
+				if i == 0{
+		
+					coeffsRot0 := ctPreRot0.Value[0]
+					coeffsRot1 := ctPreRot0.Value[1]
+
+					r := p.RoundingNoise()
+
+					for k := range tmp{
+						bComplex[0].Mul(tmp[k][0], scale)
+						bComplex[1].Mul(tmp[k][1], scale)
+						bComplex.Add(bComplex, r[k])
+						mul(coeffsRot0[k], bComplex, coeffsAcc0[k])
+						mul(coeffsRot1[k], bComplex, coeffsAcc1[k])
+					}
+
+				}else{
+					
+					coeffsRot0 := ctPreRot[i]
+
+					r := p.RoundingNoise()
+
+					for k := range tmp{
+						bComplex[0].Mul(tmp[k][0], scale)
+						bComplex[1].Mul(tmp[k][1], scale)
+						bComplex.Add(bComplex, r[k])
+						mul(coeffsRot0[k], bComplex, coeffsAcc0[k])
+					}
+				}
+
 			} else {
-				acc.MulThenAdd(ctPreRot[i], tmp)
+
+				if i == 0{
+		
+					coeffsRot0 := ctPreRot0.Value[0]
+					coeffsRot1 := ctPreRot0.Value[1]
+
+					r := p.RoundingNoise()
+
+					for k := range tmp{
+						bComplex[0].Mul(tmp[k][0], scale)
+						bComplex[1].Mul(tmp[k][1], scale)
+						bComplex.Add(bComplex, r[k])
+						mul(coeffsRot0[k], bComplex, dComplex)
+						coeffsAcc0[k].Add(coeffsAcc0[k], dComplex)
+						mul(coeffsRot1[k], bComplex, dComplex)
+						coeffsAcc1[k].Add(coeffsAcc1[k], dComplex)
+					}
+
+				}else{
+					
+					coeffsRot0 := ctPreRot[i]
+
+					r := p.RoundingNoise()
+
+					for k := range tmp{
+						bComplex[0].Mul(tmp[k][0], scale)
+						bComplex[1].Mul(tmp[k][1], scale)
+						bComplex.Add(bComplex, r[k])
+						mul(coeffsRot0[k], bComplex, dComplex)
+						coeffsAcc0[k].Add(coeffsAcc0[k], dComplex)
+					}
+				}
 			}
 
 			cnt++
 		}
 
 		if j != 0 {
-			acc.ModDown()
-			acc.RotateHoisted(j)
+			
+			m0 := acc.Value[0]
+			e0 := p.KeySwitchingNoiseRaw(p.Level, p.RoundingNoise(), p.Sk[0])
+			for k := range m0 {
+				m0[k].Add(m0[k], e0[k])
+			}
+
+			utils.RotateSliceInPlace(m0, j)
 		}
 
-		res.Add(res, acc)
+		for i := 0; i < 2; i++{
+			m0, m1 := res.Value[i], acc.Value[i]
+			for j := range m0{
+				m0[j].Add(m0[j], m1[j])
+			}
+		}
 	}
 
 	res.ModDown()

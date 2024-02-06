@@ -62,6 +62,8 @@ func main() {
 	// This minimum is set in the case where log2min is close to 0.
 	iters = utils.Max(iters, 3)
 
+	fmt.Println(iters)
+
 	for i := 0; i < 128; i++ {
 
 		fmt.Println(i)

@@ -7,22 +7,24 @@ import (
 	"github.com/tuneinsight/ckks-bootstrapping-precision/estimator"
 	"github.com/tuneinsight/lattigo/v5/core/rlwe"
 	"github.com/tuneinsight/lattigo/v5/he/hefloat"
-	"github.com/tuneinsight/lattigo/v5/ring"
 	"github.com/tuneinsight/lattigo/v5/utils/bignum"
 )
 
 
 func main(){
 
-	LogN := 10
+	LogN := 16
 	LogScale := 45
 	params, err := hefloat.NewParametersFromLiteral(hefloat.ParametersLiteral{
 		LogN:            LogN,
-		LogQ:            []int{55, 39, 39, 39}, 
+		LogQ:            []int{55, 45, 45, 45, 45}, 
 		LogP:            []int{61, 61, 61},
 		LogDefaultScale: LogScale,
-		Xs:              ring.Ternary{H: 192},
 	})
+
+	if err != nil{
+		panic(err)
+	}
 
 	mulCmplx := bignum.NewComplexMultiplier().Mul
 
@@ -57,8 +59,8 @@ func main(){
 	ecd := hefloat.NewEncoder(params)
 
 	kgen := hefloat.NewKeyGenerator(params)
-	sk, pk := kgen.GenKeyPairNew()
-	enc := hefloat.NewEncryptor(params, pk)
+	sk, _ := kgen.GenKeyPairNew()
+	enc := hefloat.NewEncryptor(params, sk)
 	dec := hefloat.NewDecryptor(params, sk)
 
 	estParams := estimator.NewParameters(params)
@@ -72,7 +74,7 @@ func main(){
 		Format:       hefloat.RepackImagAsReal,
 		LevelQ:       params.MaxLevelQ(),
 		LevelP:       params.MaxLevelP(),
-		Levels:       []int{1, 1, 1},
+		Levels:       []int{1, 1, 1, 1},
 		LogBSGSRatio: 0,
 	}
 
@@ -83,7 +85,7 @@ func main(){
 	DFTMatrix.GenMatrices(params.LogN(), prec)
 
 	DFTMatrixHeFloat, err := hefloat.NewDFTMatrixFromLiteral(params, DFTMatrixLiteral, ecd)
-	
+
 	if err != nil{
 		panic(err)
 	}
@@ -93,15 +95,14 @@ func main(){
 	eval := hefloat.NewEvaluator(params, evk)
 	hdftEval := hefloat.NewDFTEvaluator(params, eval)
 
-	for i := 0; i < 16; i++ {
+
+	for i := 0; i < 128; i++ {
 
 		fmt.Println(i)
 
 		valuesReal, elReal, _, ctReal := estParams.NewTestVector(ecd, enc, -1, 1)
 		valuesImag, elImag, _, ctImag := estParams.NewTestVector(ecd, enc, -1, 1)
 		
-		elReal = elReal.SlotsToCoeffs(elReal, elImag, DFTMatrix)
-
 		ctReal, err := hdftEval.SlotsToCoeffsNew(ctReal, ctImag, DFTMatrixHeFloat)
 		
 		if err != nil{
@@ -116,6 +117,7 @@ func main(){
 			valuesReal = DFTMatrix.Value[i].Evaluate(valuesReal, newVec, add, muladd)
 		}
 
+		elReal = elReal.SlotsToCoeffs(elReal, elImag, DFTMatrix)
 		elReal.Decrypt()
 		elReal.Normalize()
 

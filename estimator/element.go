@@ -159,20 +159,6 @@ func (p *Element) AddAutomorphismNoise() {
 	}
 }
 
-// AddAutomorphismNoiseRaw sets the noise to the key-switching noise scaled by P, which is
-// (p[0], p[1]) = (p[0] + p[1] * sk * P + sum(e_i * qalphai), 0)
-// This assumes that p[0] is scaled by P.
-func (p *Element) AddAutomorphismNoiseRaw() {
-	e0 := p.KeySwitchingNoiseRaw(p.Level, p.Value[1], p.Sk[0])
-	m0 := p.Value[0]
-	m1 := p.Value[1]
-	for i := range m0 {
-		m0[i].Add(m0[i], e0[i])
-		m1[i][0].SetFloat64(0)
-		m1[i][1].SetFloat64(0)
-	}
-}
-
 // AddRelinearizationNoise adds the relinearization noise, which is
 // (p[0], p[1]) = (p[0] + p[2]*sk + round(sum(e_i qalphai)/P)), p[1] + round(1/2))
 func (p *Element) AddRelinearizationNoise() {

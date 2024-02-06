@@ -61,6 +61,12 @@ func Round(x *big.Float){
 	x.SetInt(xint)
 }
 
+func Truncate(x *big.Float, delta *big.Float){
+	x.Mul(x, delta)
+	Round(x)
+	x.Quo(x, delta)
+}
+
 func DecompRNS(levelQ, levelP int) int {
 	return (levelQ + levelP + 1) / (levelP + 1)
 }

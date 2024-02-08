@@ -6,19 +6,21 @@ import (
 	"github.com/tuneinsight/ckks-bootstrapping-precision/estimator"
 	"github.com/tuneinsight/lattigo/v5/core/rlwe"
 	"github.com/tuneinsight/lattigo/v5/he/hefloat"
+	"github.com/tuneinsight/lattigo/v5/ring"
 	"github.com/tuneinsight/lattigo/v5/utils/bignum"
 )
 
 func main() {
 
 	LogN := 16
-	LogScale := 45
+	LogScale := 55
 
 	params, err := hefloat.NewParametersFromLiteral(hefloat.ParametersLiteral{
 		LogN:            LogN,
-		LogQ:            []int{55, 45, 45, 45, 45, 45, 45, 45, 45, 45, 45, 45, 45},
-		LogP:            []int{60},
+		LogQ:            []int{60, 55, 55, 55, 55, 55, 55, 55, 55, 55, 55, 55, 55},
+		LogP:            []int{61, 61, 61},
 		LogDefaultScale: LogScale,
+		Xs: ring.Ternary{H: 192},
 	})
 
 	if err != nil {
@@ -26,6 +28,8 @@ func main() {
 	}
 
 	ecd := hefloat.NewEncoder(params)
+
+	fmt.Println(params.LogQ(), params.LogP())
 
 	kgen := hefloat.NewKeyGenerator(params)
 	sk, pk := kgen.GenKeyPairNew()

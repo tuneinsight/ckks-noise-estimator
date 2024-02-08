@@ -9,18 +9,20 @@ import (
 	"github.com/tuneinsight/lattigo/v5/utils/bignum"
 	"github.com/tuneinsight/lattigo/v5/utils/sampling"
 	"github.com/tuneinsight/lattigo/v5/utils"
+	"github.com/tuneinsight/lattigo/v5/ring"
 )
 
 func main() {
 
 	LogN := 16
-	LogScale := 45
+	LogScale := 55
 
 	params, err := hefloat.NewParametersFromLiteral(hefloat.ParametersLiteral{
 		LogN:            LogN,
-		LogQ:            []int{55, 45, 45, 45, 45, 45, 45, 45, 45, 45, 45},
-		LogP:            []int{60, 60, 60},
+		LogQ:            []int{60, 55, 55, 55, 55, 55, 55, 55, 55, 55, 55},
+		LogP:            []int{61, 61, 61},
 		LogDefaultScale: LogScale,
+		Xs: ring.Ternary{H:192},
 	})
 
 	if err != nil {

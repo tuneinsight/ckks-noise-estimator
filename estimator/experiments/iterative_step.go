@@ -6,6 +6,7 @@ import (
 	"math"
 	"github.com/tuneinsight/ckks-bootstrapping-precision/estimator"
 	"github.com/tuneinsight/lattigo/v5/core/rlwe"
+	"github.com/tuneinsight/lattigo/v5/ring"
 	"github.com/tuneinsight/lattigo/v5/he/hefloat"
 	"github.com/tuneinsight/lattigo/v5/utils/bignum"
 	"github.com/tuneinsight/lattigo/v5/utils/sampling"
@@ -14,18 +15,21 @@ import (
 func main() {
 
 	LogN := 16
-	LogScale := 45
+	LogScale := 55
 
 	params, err := hefloat.NewParametersFromLiteral(hefloat.ParametersLiteral{
 		LogN:            LogN,
-		LogQ:            []int{55, 45, 45, 45, 45, 45, 45, 45, 45, 45, 45, 45, 45, 45, 45},
-		LogP:            []int{60, 60, 60, 60, 60},
+		LogQ:            []int{60, 55, 55, 55, 55, 55, 55, 55, 55, 55, 55, 55, 55, 55, 55},
+		LogP:            []int{61, 61, 61, 61, 61},
 		LogDefaultScale: LogScale,
+		Xs: ring.Ternary{H:192},
 	})
 
 	if err != nil {
 		panic(err)
 	}
+
+	fmt.Println(params.LogQ(), params.LogP())
 
 	ecd := hefloat.NewEncoder(params)
 
@@ -54,7 +58,7 @@ func main() {
 
 	polyEval := hefloat.NewPolynomialEvaluator(params, eval)
 
-	for i := 0; i < 1; i++ {
+	for i := 0; i < 128; i++ {
 		fmt.Println(i)
 
 		values, el, _, ct := NewTestVector(estParams, ecd, enc, -0.2, 0.2)
@@ -84,7 +88,7 @@ func main() {
 		el.Normalize()
 
 		pWant := hefloat.GetPrecisionStats(params, ecd, dec, values, el.Value[0], 0, false)
-		pHave := hefloat.GetPrecisionStats(params, ecd, dec, el.Value[0], ct, 0, false)
+		pHave := hefloat.GetPrecisionStats(params, ecd, dec, values, ct, 0, false)
 
 		statsWant.Add(pWant)
 		statsHave.Add(pHave)

@@ -7,6 +7,7 @@ import (
 
 	"github.com/tuneinsight/ckks-bootstrapping-precision/estimator"
 	"github.com/tuneinsight/lattigo/v5/core/rlwe"
+	//"github.com/tuneinsight/lattigo/v5/ring"
 	"github.com/tuneinsight/lattigo/v5/he/hefloat"
 	"github.com/tuneinsight/lattigo/v5/utils/bignum"
 )
@@ -14,18 +15,21 @@ import (
 func main() {
 
 	LogN := 16
-	LogScale := 45
+	LogScale := 55
 
 	params, err := hefloat.NewParametersFromLiteral(hefloat.ParametersLiteral{
 		LogN:            LogN,
-		LogQ:            []int{55, 45, 45, 45, 45, 45, 45, 45, 45, 45},
-		LogP:            []int{60},
+		LogQ:            []int{55, 55, 55, 55, 55, 55, 55, 55, 55, 55},
+		LogP:            []int{61, 61, 61},
 		LogDefaultScale: LogScale,
+		//Xs: ring.Ternary{H:192},
 	})
 
 	if err != nil {
 		panic(err)
 	}
+
+	fmt.Println(params.LogQ(), params.LogP())
 
 	ecd := hefloat.NewEncoder(params)
 
@@ -57,11 +61,11 @@ func main() {
 
 	scalar, constant := poly.ChangeOfBasis()
 
-	for i := 0; i < 128; i++ {
+	for i := 0; i < 1; i++ {
 
 		fmt.Println(i)
 
-		values, el, _, ct := estParams.NewTestVector(ecd, enc, complex(-k, 0), complex(k, 0))
+		values, el, _, ct := estParams.NewTestVector(ecd, enc, complex(-k+1, 0), complex(k-1, 0))
 
 		for i := range values {
 			values[i] = poly.Evaluate(values[i])

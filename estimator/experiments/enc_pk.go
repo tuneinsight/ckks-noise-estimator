@@ -5,12 +5,11 @@ import (
 
 	"github.com/tuneinsight/ckks-bootstrapping-precision/estimator"
 	"github.com/tuneinsight/lattigo/v5/he/hefloat"
-	"github.com/tuneinsight/lattigo/v5/ring"
 )
 
 func main() {
 
-	LogN := 12
+	LogN := 16
 	LogScale := 45
 
 	params, err := hefloat.NewParametersFromLiteral(hefloat.ParametersLiteral{
@@ -18,7 +17,6 @@ func main() {
 		LogQ:            []int{55},
 		LogP:            []int{60},
 		LogDefaultScale: LogScale,
-		Xs: ring.Ternary{H:1},
 	})
 
 	if err != nil {

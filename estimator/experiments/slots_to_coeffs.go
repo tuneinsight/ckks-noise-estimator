@@ -6,6 +6,7 @@ import (
 
 	"github.com/tuneinsight/ckks-bootstrapping-precision/estimator"
 	"github.com/tuneinsight/lattigo/v5/core/rlwe"
+	//"github.com/tuneinsight/lattigo/v5/ring"
 	"github.com/tuneinsight/lattigo/v5/he/hefloat"
 	"github.com/tuneinsight/lattigo/v5/utils/bignum"
 )
@@ -17,14 +18,17 @@ func main(){
 	LogScale := 45
 	params, err := hefloat.NewParametersFromLiteral(hefloat.ParametersLiteral{
 		LogN:            LogN,
-		LogQ:            []int{55, 45, 45, 45, 45}, 
+		LogQ:            []int{60, 45, 45, 45, 45}, 
 		LogP:            []int{61, 61, 61},
 		LogDefaultScale: LogScale,
+		//Xs: ring.Ternary{H:192},
 	})
 
 	if err != nil{
 		panic(err)
 	}
+
+	fmt.Println(params.LogQ(), params.LogP())
 
 	mulCmplx := bignum.NewComplexMultiplier().Mul
 
@@ -123,6 +127,8 @@ func main(){
 
 		pWantReal := hefloat.GetPrecisionStats(params, ecd, nil, valuesReal, elReal.Value[0], 0, false)
 		pHaveReal := hefloat.GetPrecisionStats(params, ecd, dec, valuesReal, ctReal, 0, false)
+
+		fmt.Println(pHaveReal.String())
 
 		statsWant.Add(pWantReal)
 		statsHave.Add(pHaveReal)

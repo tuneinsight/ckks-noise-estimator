@@ -5,7 +5,7 @@ import(
 	"github.com/tuneinsight/ckks-bootstrapping-precision/estimator"
 	bootEst "github.com/tuneinsight/ckks-bootstrapping-precision/estimator/bootstrapping"
 	"github.com/tuneinsight/lattigo/v5/he/hefloat"
-	//"github.com/tuneinsight/lattigo/v5/ring"
+	"github.com/tuneinsight/lattigo/v5/ring"
 	"github.com/tuneinsight/lattigo/v5/core/rlwe"
 	"github.com/tuneinsight/lattigo/v5/utils"
 	"github.com/tuneinsight/lattigo/v5/he/hefloat/bootstrapping"
@@ -13,13 +13,13 @@ import(
 
 func main(){
 	LogN := 16
-	LogScale := 40
+	LogScale := 45
 	params, err := hefloat.NewParametersFromLiteral(hefloat.ParametersLiteral{
 		LogN:            LogN,
-		LogQ:            []int{55, 40}, 
+		LogQ:            []int{55, 45}, 
 		LogP:            []int{61, 61, 61},
 		LogDefaultScale: LogScale,
-		//Xs:              ring.Ternary{H: 192},
+		Xs:              ring.Ternary{H: 192},
 	})
 
 	if err != nil {
@@ -37,6 +37,9 @@ func main(){
 	if err != nil {
 		panic(err)
 	}
+
+	fmt.Println(btpParams.BootstrappingParameters.LogQ(), btpParams.BootstrappingParameters.LogP())
+	fmt.Println(btpParams.BootstrappingParameters.MaxLevel())
 
 	kgen := rlwe.NewKeyGenerator(params)
 
@@ -65,7 +68,7 @@ func main(){
 	statsHave := estimator.NewStats()
 	statsWant := estimator.NewStats()
 
-	for i := 0; i < 128; i++{
+	for i := 0; i < 1; i++{
 
 		fmt.Println(i)
 

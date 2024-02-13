@@ -1,15 +1,15 @@
 package estimator
 
 import(
+	"fmt"
 	"math"
 	"github.com/tuneinsight/lattigo/v5/utils"
-	"github.com/tuneinsight/lattigo/v5/utils/bignum"
 )
 
-func (el *Element) GoldschmidtDivision(log2min float64) {
+func (e Estimator) GoldschmidtDivisionNew(el *Element, log2min float64) (a *Element, err error) {
 
 	// 2^{-(prec - LogN + 1)}
-	prec := float64(el.N()/2) / el.DefaultScale().Float64()
+	prec := float64(e.N()/2) / e.DefaultScale().Float64()
 
 	// Estimates the number of iterations required to achieve the desired precision, given the interval [min, 2-min]
 	start := 1 - math.Exp2(log2min)
@@ -21,26 +21,47 @@ func (el *Element) GoldschmidtDivision(log2min float64) {
 
 	iters = utils.Max(iters, 3)
 
-	a := el
-	a.Mul(a, -1)
-	b := a.CopyNew()
-	a.Add(a, 2)
-	b.Add(b, 1)
+	if a, err = e.MulNew(el, -1); err != nil{
+		return nil, fmt.Errorf("e.MulNew: %w", err)
+	}
 
-	tmp := NewElement[*bignum.Complex](*el.Parameters, nil, 1, a.Scale)
+	var b *Element
+	if b, err = e.AddNew(a, 1); err != nil{
+		return nil, fmt.Errorf("e.AddNew: %w", err)
+	}
+
+	if err = e.Add(a, 2, a); err != nil{
+		return nil, fmt.Errorf("e.Add: %w", err)
+	}
+
+	tmp := e.NewElement(nil, 1, a.Level, a.Scale)
 
 	for j := 1; j < iters; j++{
 
-		b.Mul(b, b)
-		b.Relinearize()
-		b.Rescale()
+		if err = e.MulRelin(b, b, b); err != nil{
+			return nil, fmt.Errorf("e.MulRelin: %w", err)
+		}
 
-		tmp.Mul(a, b)
-		tmp.Relinearize()
-		tmp.Rescale()
+		if err = e.Rescale(b, b); err != nil{
+			return nil, fmt.Errorf("e.Rescale: %w", err)
+		}
 
-		a.SetScale(tmp.Scale)
+		if err = e.MulRelin(a, b, tmp); err != nil{
+			return nil, fmt.Errorf("e.MulRelin: %w", err)
+		}
 
-		a.Add(a, tmp)
+		if err = e.Rescale(tmp, tmp); err != nil{
+			return nil, fmt.Errorf("e.Rescale: %w", err)
+		}
+
+		if err = e.SetScale(a, tmp.Scale); err != nil{
+			return nil, fmt.Errorf("e.SetScale: %w", err)
+		}
+
+		if err = e.Add(a, tmp, a); err != nil{
+			return nil, fmt.Errorf("e.Add: %w", err)
+		}
 	}
+
+	return
 }

@@ -7,6 +7,7 @@ import (
 
 	"github.com/tuneinsight/ckks-bootstrapping-precision/estimator"
 	"github.com/tuneinsight/lattigo/v5/core/rlwe"
+
 	//"github.com/tuneinsight/lattigo/v5/ring"
 	"github.com/tuneinsight/lattigo/v5/he/hefloat"
 	"github.com/tuneinsight/lattigo/v5/utils/bignum"
@@ -19,7 +20,7 @@ func main() {
 
 	params, err := hefloat.NewParametersFromLiteral(hefloat.ParametersLiteral{
 		LogN:            LogN,
-		LogQ:            []int{55, 55, 55, 55, 55, 55, 55, 55, 55, 55},
+		LogQ:            []int{60, 55, 55, 55, 55, 55, 55, 55, 55, 55},
 		LogP:            []int{61, 61, 61},
 		LogDefaultScale: LogScale,
 		//Xs: ring.Ternary{H:192},
@@ -44,7 +45,7 @@ func main() {
 
 	polyEval := hefloat.NewPolynomialEvaluator(params, eval)
 
-	estParams := estimator.NewParameters(params)
+	est := estimator.NewEstimator(params)
 
 	statsHave := estimator.NewStats()
 	statsWant := estimator.NewStats()
@@ -65,33 +66,48 @@ func main() {
 
 		fmt.Println(i)
 
-		values, el, _, ct := estParams.NewTestVector(ecd, enc, complex(-k+1, 0), complex(k-1, 0))
+		values, el, _, ct := est.NewTestVector(ecd, enc, complex(-k+1, 0), complex(k-1, 0))
 
 		for i := range values {
 			values[i] = poly.Evaluate(values[i])
 		}
 
 		if scalar.Cmp(new(big.Float).SetInt64(1)) != 0 {
-			el.Mul(el, scalar)
-			el.Add(el, constant)
-			el.Rescale()
-			polyEval.Mul(ct, scalar, ct)
-			polyEval.Add(ct, constant, ct)
-			polyEval.Rescale(ct, ct)
+
+			if err = est.Mul(el, scalar, el); err != nil {
+				panic(err)
+			}
+
+			if err = est.Add(el, constant, el); err != nil {
+				panic(err)
+			}
+
+			if err = est.Rescale(el, el); err != nil {
+				panic(err)
+			}
+
+			if err = polyEval.Mul(ct, scalar, ct); err != nil {
+				panic(err)
+			}
+
+			if err = polyEval.Add(ct, constant, ct); err != nil {
+				panic(err)
+			}
+
+			if err = polyEval.Rescale(ct, ct); err != nil {
+				panic(err)
+			}
 		}
 
-		if el, err = el.EvaluatePolynomial(poly, el.Scale); err != nil {
+		if el, err = est.EvaluatePolynomialNew(el, poly, el.Scale); err != nil {
 			panic(err)
 		}
-
-		el.Decrypt()
-		el.Normalize()
 
 		if ct, err = polyEval.Evaluate(ct, poly, ct.Scale); err != nil {
 			panic(err)
 		}
 
-		pWant := hefloat.GetPrecisionStats(params, ecd, dec, values, el.Value[0], 0, false)
+		pWant := hefloat.GetPrecisionStats(params, ecd, dec, values, est.Decrypt(el), 0, false)
 		pHave := hefloat.GetPrecisionStats(params, ecd, dec, values, ct, 0, false)
 
 		statsWant.Add(pWant)

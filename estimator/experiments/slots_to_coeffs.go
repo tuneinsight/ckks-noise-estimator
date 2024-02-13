@@ -6,25 +6,25 @@ import (
 
 	"github.com/tuneinsight/ckks-bootstrapping-precision/estimator"
 	"github.com/tuneinsight/lattigo/v5/core/rlwe"
+
 	//"github.com/tuneinsight/lattigo/v5/ring"
 	"github.com/tuneinsight/lattigo/v5/he/hefloat"
 	"github.com/tuneinsight/lattigo/v5/utils/bignum"
 )
 
+func main() {
 
-func main(){
-
-	LogN := 16
+	LogN := 14
 	LogScale := 45
 	params, err := hefloat.NewParametersFromLiteral(hefloat.ParametersLiteral{
 		LogN:            LogN,
-		LogQ:            []int{60, 45, 45, 45, 45}, 
+		LogQ:            []int{60, 45, 45, 45, 45},
 		LogP:            []int{61, 61, 61},
 		LogDefaultScale: LogScale,
 		//Xs: ring.Ternary{H:192},
 	})
 
-	if err != nil{
+	if err != nil {
 		panic(err)
 	}
 
@@ -67,7 +67,7 @@ func main(){
 	enc := hefloat.NewEncryptor(params, sk)
 	dec := hefloat.NewDecryptor(params, sk)
 
-	estParams := estimator.NewParameters(params)
+	est := estimator.NewEstimator(params)
 
 	statsHave := estimator.NewStats()
 	statsWant := estimator.NewStats()
@@ -90,7 +90,7 @@ func main(){
 
 	DFTMatrixHeFloat, err := hefloat.NewDFTMatrixFromLiteral(params, DFTMatrixLiteral, ecd)
 
-	if err != nil{
+	if err != nil {
 		panic(err)
 	}
 
@@ -99,21 +99,20 @@ func main(){
 	eval := hefloat.NewEvaluator(params, evk)
 	hdftEval := hefloat.NewDFTEvaluator(params, eval)
 
-
-	for i := 0; i < 128; i++ {
+	for i := 0; i < 1; i++ {
 
 		fmt.Println(i)
 
-		valuesReal, elReal, _, ctReal := estParams.NewTestVector(ecd, enc, -1, 1)
-		valuesImag, elImag, _, ctImag := estParams.NewTestVector(ecd, enc, -1, 1)
-		
+		valuesReal, elReal, _, ctReal := est.NewTestVector(ecd, enc, -1, 1)
+		valuesImag, elImag, _, ctImag := est.NewTestVector(ecd, enc, -1, 1)
+
 		ctReal, err := hdftEval.SlotsToCoeffsNew(ctReal, ctImag, DFTMatrixHeFloat)
-		
-		if err != nil{
+
+		if err != nil {
 			panic(err)
 		}
 
-		for i := range valuesReal{
+		for i := range valuesReal {
 			valuesReal[i][1].Set(valuesImag[i][0])
 		}
 
@@ -121,14 +120,12 @@ func main(){
 			valuesReal = DFTMatrix.Value[i].Evaluate(valuesReal, newVec, add, muladd)
 		}
 
-		elReal = elReal.SlotsToCoeffs(elReal, elImag, DFTMatrix)
-		elReal.Decrypt()
-		elReal.Normalize()
+		if err = est.SlotsToCoeffs(elReal, elImag, DFTMatrix, elReal); err != nil {
+			panic(err)
+		}
 
-		pWantReal := hefloat.GetPrecisionStats(params, ecd, nil, valuesReal, elReal.Value[0], 0, false)
+		pWantReal := hefloat.GetPrecisionStats(params, ecd, nil, valuesReal, est.Decrypt(elReal), 0, false)
 		pHaveReal := hefloat.GetPrecisionStats(params, ecd, dec, valuesReal, ctReal, 0, false)
-
-		fmt.Println(pHaveReal.String())
 
 		statsWant.Add(pWantReal)
 		statsHave.Add(pHaveReal)

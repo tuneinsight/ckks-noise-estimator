@@ -2,11 +2,14 @@ package main
 
 import (
 	"fmt"
-	"time"
+
 	"github.com/tuneinsight/ckks-bootstrapping-precision/estimator"
 	"github.com/tuneinsight/lattigo/v5/core/rlwe"
 	"github.com/tuneinsight/lattigo/v5/he/hefloat"
-	"github.com/tuneinsight/lattigo/v5/ring"
+
+	//"github.com/tuneinsight/lattigo/v5/ring"
+	"time"
+
 	"github.com/tuneinsight/lattigo/v5/utils/bignum"
 )
 
@@ -20,7 +23,7 @@ func main() {
 		LogQ:            []int{60, 55, 55, 55, 55, 55, 55, 55, 55, 55, 55, 55, 55},
 		LogP:            []int{61, 61, 61},
 		LogDefaultScale: LogScale,
-		Xs: ring.Ternary{H: 192},
+		//Xs:              ring.Ternary{H: 192},
 	})
 
 	if err != nil {
@@ -40,7 +43,7 @@ func main() {
 
 	eval := hefloat.NewEvaluator(params, evk)
 
-	estParams := estimator.NewParameters(params)
+	est := estimator.NewEstimator(params)
 
 	statsHave := estimator.NewStats()
 	statsWant := estimator.NewStats()
@@ -49,11 +52,11 @@ func main() {
 
 	n := 12
 
-	for i := 0; i < 128; i++ {
+	for i := 0; i < 1; i++ {
 
 		fmt.Println(i)
 
-		values, el, _, ct := estParams.NewTestVector(ecd, enc, -1, 1)
+		values, el, _, ct := est.NewTestVector(ecd, enc, -1, 1)
 
 		for k := 0; k < n; k++ {
 			for l := range values {
@@ -64,24 +67,22 @@ func main() {
 		}
 
 		pbCt := hefloat.NewPowerBasis(ct, bignum.Chebyshev)
-		runTimed(func(){
-		if err := pbCt.GenPower(1<<n, false, eval); err != nil {
-			panic(err)
-		}})
+		runTimed(func() {
+			if err := pbCt.GenPower(1<<n, false, eval); err != nil {
+				panic(err)
+			}
+		})
 
 		ct = pbCt.Value[1<<n]
 
 		pbEl := estimator.NewPowerBasis(el, bignum.Chebyshev)
 
-		runTimed(func(){
-			pbEl.GenPower(1<<n, false)
+		runTimed(func() {
+			pbEl.GenPower(1<<n, false, est)
 		})
 		el = pbEl.Value[1<<n]
 
-		el.Decrypt()
-		el.Normalize()
-
-		pWant := hefloat.GetPrecisionStats(params, ecd, dec, values, el.Value[0], 0, false)
+		pWant := hefloat.GetPrecisionStats(params, ecd, dec, values, est.Decrypt(el), 0, false)
 		pHave := hefloat.GetPrecisionStats(params, ecd, dec, values, ct, 0, false)
 
 		statsWant.Add(pWant)
@@ -97,7 +98,7 @@ func main() {
 	fmt.Println(estimator.ToLaTeXTable(LogN, LogScale, statsWant, statsHave))
 }
 
-func runTimed(f func()){
+func runTimed(f func()) {
 	now := time.Now()
 	f()
 	fmt.Println(time.Since(now))

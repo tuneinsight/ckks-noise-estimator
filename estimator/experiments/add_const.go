@@ -33,16 +33,16 @@ func main() {
 	dec := hefloat.NewDecryptor(params, sk)
 	eval := hefloat.NewEvaluator(params, nil)
 
-	estParams := estimator.NewParameters(params)
+	est := estimator.NewEstimator(params)
 
 	statsHave := estimator.NewStats()
 	statsWant := estimator.NewStats()
 
-	for i := 0; i < 128; i++ {
+	for i := 0; i < 1; i++ {
 
 		scalar := complex(sampling.RandFloat64(-1, 1), sampling.RandFloat64(-1, 1))
 
-		values, el, _, ct := estParams.NewTestVector(ecd, enc, -1-1i, 1+1i)
+		values, el, _, ct := est.NewTestVector(ecd, enc, -1-1i, 1+1i)
 
 		scalarR := new(big.Float).SetFloat64(real(scalar))
 		scalarI := new(big.Float).SetFloat64(imag(scalar))
@@ -56,12 +56,11 @@ func main() {
 			panic(err)
 		}
 
-		el.Add(el, scalar)
+		if err := est.Add(el, scalar, el); err != nil {
+			panic(err)
+		}
 
-		el.Decrypt()
-		el.Normalize()
-
-		pWant := hefloat.GetPrecisionStats(params, ecd, dec, values, el.Value[0], 0, false)
+		pWant := hefloat.GetPrecisionStats(params, ecd, nil, values, est.Decrypt(el), 0, false)
 		pHave := hefloat.GetPrecisionStats(params, ecd, dec, values, ct, 0, false)
 
 		statsWant.Add(pWant)

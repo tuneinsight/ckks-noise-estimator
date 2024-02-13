@@ -17,8 +17,8 @@ import (
 type Evaluator struct {
 	bootstrapping.Parameters
 
-	ResidualParameters      estimator.Parameters
-	BootstrappingParameters estimator.Parameters
+	ResidualParameters      estimator.Estimator
+	BootstrappingParameters estimator.Estimator
 
 	S2CDFTMatrix   estimator.DFTMatrix
 	C2SDFTMatrix   estimator.DFTMatrix
@@ -31,8 +31,8 @@ func NewEvaluator(btpParams bootstrapping.Parameters) Evaluator {
 
 	eval := Evaluator{
 		Parameters:              btpParams,
-		ResidualParameters:      estimator.NewParameters(btpParams.ResidualParameters),
-		BootstrappingParameters: estimator.NewParameters(btpParams.BootstrappingParameters),
+		ResidualParameters:      estimator.NewEstimator(btpParams.ResidualParameters),
+		BootstrappingParameters: estimator.NewEstimator(btpParams.BootstrappingParameters),
 	}
 
 	if btpParams.EphemeralSecretWeight != 0{
@@ -107,26 +107,38 @@ func checkMessageRatio(el *estimator.Element, msgRatio float64, r *ring.Ring) bo
 	return currentMessageRatio.Cmp(rlwe.NewScale(r.SubRings[level].Modulus).Mul(rlwe.NewScale(msgRatio))) > -1
 }
 
-func (eval Evaluator) Bootstrap(el *estimator.Element) (*estimator.Element) {
+func (eval Evaluator) Bootstrap(elIn *estimator.Element) (elOut *estimator.Element, err error) {
 
-	eval.ScaleDown(el)
-
-	eval.ModUp(el)
-
-	elReal, elImag := eval.CoeffsToSlots(el)
-
-	elReal = eval.EvalMod(elReal)
-
-	if elImag != nil{
-		elImag = eval.EvalMod(elImag)
+	if _, err = eval.ScaleDown(elIn); err != nil{
+		return nil, fmt.Errorf("eval.ScaleDown: %w", err)
 	}
 
-	el = eval.SlotsToCoeffs(elReal, elImag)
+	if err = eval.ModUp(elIn); err != nil{
+		return nil, fmt.Errorf("eval.ModUp: %w", err)
+	}
 
-	return el
+	elReal, elImag, err := eval.CoeffsToSlotsNew(elIn)
+
+	if err != nil{
+		return nil, fmt.Errorf("eval.CoeffsToSlotsNew: %w", err)
+	}
+
+	if elReal, err = eval.EvalModNew(elReal); err != nil{
+		return nil, fmt.Errorf("eval.EvalModNew: %w", err)
+	}
+
+	if elImag != nil{
+		if elImag, err = eval.EvalModNew(elImag); err != nil{
+			return nil, fmt.Errorf("eval.EvalModNew: %w", err)
+		}
+	}
+
+	return eval.SlotsToCoeffsNew(elReal, elImag)
 }
 
-func (eval Evaluator) ScaleDown(el *estimator.Element) *rlwe.Scale {
+func (eval Evaluator) ScaleDown(el *estimator.Element) (*rlwe.Scale, error) {
+
+	est := eval.BootstrappingParameters
 
 	params := &eval.BootstrappingParameters.Parameters
 
@@ -148,12 +160,15 @@ func (eval Evaluator) ScaleDown(el *estimator.Element) *rlwe.Scale {
 	scaleUp := currentMessageRatio.Div(targetMessageRatio)
 
 	if scaleUp.Cmp(rlwe.NewScale(0.5)) == -1 {
-		panic(fmt.Errorf("initial Q/Scale = %f < 0.5*Q[0]/MessageRatio = %f", currentMessageRatio.Float64(), targetMessageRatio.Float64()))
+		return nil, fmt.Errorf("initial Q/Scale = %f < 0.5*Q[0]/MessageRatio = %f", currentMessageRatio.Float64(), targetMessageRatio.Float64())
 	}
 
 	scaleUpBigint := scaleUp.BigInt()
 
-	el.Mul(el, scaleUpBigint)
+	if err := est.Mul(el, scaleUpBigint, el); err != nil{
+		return nil, fmt.Errorf("est.Mul: %w", err)
+	}
+
 	el.Scale = el.Scale.Mul(rlwe.NewScale(scaleUpBigint))
 
 	// errScale = CtIn.Scale/(Q[0]/MessageRatio)
@@ -161,20 +176,26 @@ func (eval Evaluator) ScaleDown(el *estimator.Element) *rlwe.Scale {
 	targetScale.Quo(targetScale, new(big.Float).SetFloat64(eval.Mod1Parameters.MessageRatio()))
 
 	if el.Level != 0 {
-		el.Rescale()
+		if err := est.Rescale(el, el); err != nil{
+			return nil, fmt.Errorf("est.Rescale: %w", err)
+		}
 	}
 
 	// Rescaling error (if any)
 	errScale := el.Scale.Div(rlwe.NewScale(targetScale))
 
-	return &errScale
+	return &errScale, nil
 }
 
-func (eval Evaluator) ModUp(el *estimator.Element) {
+func (eval Evaluator) ModUp(el *estimator.Element) (err error) {
+
+	est := eval.BootstrappingParameters
 
 	var H int
 	if eval.EphemeralSecret != nil{
-		el.KeySwitch(eval.BootstrappingParameters.Sk[0])
+		if err = est.KeySwitch(el, eval.BootstrappingParameters.Sk[0]); err != nil{
+			return fmt.Errorf("est.KeySwitch: %w", err)
+		}
 		H = eval.EphemeralSecretWeight
 	}else{
 		H = eval.BootstrappingParameters.H
@@ -195,44 +216,49 @@ func (eval Evaluator) ModUp(el *estimator.Element) {
 		return new(big.Float).Mul(K, Q)
 	}
 
-	values := make([]*bignum.Complex, el.MaxSlots())
+	values := make([]*bignum.Complex, est.MaxSlots())
 
 	for i := range values {
 		values[i] = &bignum.Complex{irwinHall(), irwinHall()}
 	}
 
-	eval.BootstrappingParameters.Encoder.FFT(values, el.LogMaxSlots())
+	eval.BootstrappingParameters.Encoder.FFT(values, est.LogMaxSlots())
 
 	coeffs := el.Value[0]
 	for i := range coeffs {
 		coeffs[i].Add(coeffs[i], values[i])
 	}
 
-	el.Level = eval.BootstrappingParameters.MaxLevel()
-	el.Parameters = &eval.BootstrappingParameters
+	el.Level = est.MaxLevel()
 
 	if eval.EphemeralSecret != nil{
-		el.KeySwitch(eval.EphemeralSecret)
+		if err = est.KeySwitch(el, eval.EphemeralSecret); err != nil{
+			return fmt.Errorf("est.KeySwitch: %w", err)
+		}
 	}
 
 	// Scale the message from Q0/|m| to QL/|m|, where QL is the largest modulus used during the bootstrapping.
 	if scale := (eval.Mod1Parameters.ScalingFactor().Float64() / eval.Mod1Parameters.MessageRatio()) / el.Scale.Float64(); scale > 1 {
-		el.ScaleUp(rlwe.NewScale(scale))
+		if err = est.ScaleUp(el, rlwe.NewScale(scale)); err != nil{
+			return fmt.Errorf("est.ScaleUp: %w", err)
+		}
 	}
+
+	return
 }
 
-func (eval Evaluator) CoeffsToSlots(el *estimator.Element) (elReal, elImag *estimator.Element){
-	return el.CoeffsToSlots(eval.C2SDFTMatrix)
+func (eval Evaluator) CoeffsToSlotsNew(el *estimator.Element) (elReal, elImag *estimator.Element, err error){
+	return eval.BootstrappingParameters.CoeffsToSlotsNew(el, eval.C2SDFTMatrix)
 }
 
-func (eval Evaluator) SlotsToCoeffs(elReal, elImag *estimator.Element) (el *estimator.Element){
-	el = estimator.NewElement[*bignum.Complex](eval.BootstrappingParameters, nil, 1, eval.BootstrappingParameters.DefaultScale())
-	
-	return el.SlotsToCoeffs(elReal, elImag, eval.S2CDFTMatrix)
+func (eval Evaluator) SlotsToCoeffsNew(elReal, elImag *estimator.Element) (el *estimator.Element, err error){
+	return eval.BootstrappingParameters.SlotsToCoeffsNew(elReal, elImag, eval.S2CDFTMatrix)
 }
 
-func (eval Evaluator) EvalMod(el *estimator.Element) (*estimator.Element){
-	el, _ = el.EvaluateMod1(eval.Mod1Parameters)
-	el.Scale = eval.BootstrappingParameters.DefaultScale()
-	return el
+func (eval Evaluator) EvalModNew(elIn *estimator.Element) (elOut *estimator.Element, err error){
+	if elOut, err = eval.BootstrappingParameters.EvaluateMod1New(elIn, eval.Mod1Parameters); err != nil{
+		return nil, fmt.Errorf("eval.EvaluateMod1New: %w", err)
+	}
+	elOut.Scale = eval.BootstrappingParameters.DefaultScale()
+	return
 }

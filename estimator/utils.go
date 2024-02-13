@@ -10,9 +10,9 @@ import (
 	"github.com/tuneinsight/lattigo/v5/utils/sampling"
 )
 
-func (p Parameters) NewTestVector(ecd *hefloat.Encoder, enc *rlwe.Encryptor, a, b complex128) (values []*bignum.Complex, el *Element, pt *rlwe.Plaintext, ct *rlwe.Ciphertext) {
+func (e Estimator) NewTestVector(ecd *hefloat.Encoder, enc *rlwe.Encryptor, a, b complex128) (values []*bignum.Complex, el *Element, pt *rlwe.Plaintext, ct *rlwe.Ciphertext) {
 
-	params := p.Parameters
+	params := e.Parameters
 
 	prec := ecd.Prec()
 
@@ -28,8 +28,8 @@ func (p Parameters) NewTestVector(ecd *hefloat.Encoder, enc *rlwe.Encryptor, a, 
 	values[0][0].SetFloat64(1)
 	values[0][1].SetFloat64(0)
 
-	el = NewElement(p, values, 1, params.DefaultScale())
-	el.AddEncodingNoise()
+	el = e.NewElement(values, 1, params.MaxLevel(), params.DefaultScale())
+	e.AddEncodingNoise(el)
 
 	pt = hefloat.NewPlaintext(params, params.MaxLevel())
 	if err := ecd.Encode(values, pt); err != nil{
@@ -40,9 +40,9 @@ func (p Parameters) NewTestVector(ecd *hefloat.Encoder, enc *rlwe.Encryptor, a, 
 		ct, _ = enc.EncryptNew(pt)
 		switch enc.KeyType().(type) {
 		case *rlwe.SecretKey:
-			el.AddEncryptionNoiseSk()
+			e.AddEncryptionNoiseSk(el)
 		case *rlwe.PublicKey:
-			el.AddEncryptionNoisePk()
+			e.AddEncryptionNoisePk(el)
 		default:
 			panic("INVALID ENCRYPION KEY")
 		}

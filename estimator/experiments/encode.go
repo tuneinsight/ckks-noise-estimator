@@ -22,18 +22,16 @@ func main() {
 
 	ecd := hefloat.NewEncoder(params)
 
-	estParams := estimator.NewParameters(params)
+	est := estimator.NewEstimator(params)
 
 	statsHave := estimator.NewStats()
 	statsWant := estimator.NewStats()
 
-	for i := 0; i < 128; i++ {
+	for i := 0; i < 1; i++ {
 
-		values, el, pt, _ := estParams.NewTestVector(ecd, nil, -1-1i, 1+1i)
+		values, el, pt, _ := est.NewTestVector(ecd, nil, -1-1i, 1+1i)
 
-		el.Normalize()
-
-		pWant := hefloat.GetPrecisionStats(params, ecd, nil, values, el.Value[0], 0, false)
+		pWant := hefloat.GetPrecisionStats(params, ecd, nil, values, est.Decrypt(el), 0, false)
 		pHave := hefloat.GetPrecisionStats(params, ecd, nil, values, pt, 0, false)
 
 		statsWant.Add(pWant)

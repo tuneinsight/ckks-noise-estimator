@@ -32,17 +32,19 @@ func main() {
 	dec := hefloat.NewDecryptor(params, sk)
 	eval := hefloat.NewEvaluator(params, nil)
 
-	estParams := estimator.NewParameters(params)
+	est := estimator.NewEstimator(params)
 
 	statsHave := estimator.NewStats()
 	statsWant := estimator.NewStats()
 
 	mul := bignum.NewComplexMultiplier().Mul
 
-	for i := 0; i < 128; i++ {
+	for i := 0; i < 1; i++ {
 
-		values0, el0, _, ct0 := estParams.NewTestVector(ecd, enc, -1-1i, 1+1i)
-		values1, el1, _, ct1 := estParams.NewTestVector(ecd, enc, -1-1i, 1+1i)
+		fmt.Println(i)
+
+		values0, el0, _, ct0 := est.NewTestVector(ecd, enc, -1-1i, 1+1i)
+		values1, el1, _, ct1 := est.NewTestVector(ecd, enc, -1-1i, 1+1i)
 
 		for j := range values0 {
 			mul(values0[j], values1[j], values0[j])
@@ -52,12 +54,11 @@ func main() {
 			panic(err)
 		}
 
-		el0.Mul(el0, el1)
+		if err := est.Mul(el0, el1, el0); err != nil {
+			panic(err)
+		}
 
-		el0.Decrypt()
-		el0.Normalize()
-
-		pWant := hefloat.GetPrecisionStats(params, ecd, dec, values0, el0.Value[0], 0, false)
+		pWant := hefloat.GetPrecisionStats(params, ecd, dec, values0, est.Decrypt(el0), 0, false)
 		pHave := hefloat.GetPrecisionStats(params, ecd, dec, values0, ct0, 0, false)
 
 		statsWant.Add(pWant)

@@ -38,26 +38,28 @@ func main() {
 
 	eval := hefloat.NewEvaluator(params, evk)
 
-	estParams := estimator.NewParameters(params)
+	est := estimator.NewEstimator(params)
 
 	statsHave := estimator.NewStats()
 	statsWant := estimator.NewStats()
 
-	for i := 0; i < 128; i++ {
+	for i := 0; i < 1; i++ {
 
-		values, el, _, ct := estParams.NewTestVector(ecd, enc, -1-1i, 1+1i)
+		fmt.Println(i)
+
+		values, el, _, ct := est.NewTestVector(ecd, enc, -1-1i, 1+1i)
 
 		utils.RotateSliceInPlace(values, k)
 
-		if err := eval.Rotate(ct, k, ct); err != nil {
+		if err = eval.Rotate(ct, k, ct); err != nil {
 			panic(err)
 		}
 
-		el.Rotate(k)
-		el.Decrypt()
-		el.Normalize()
+		if el, err = est.RotateNew(el, k); err != nil {
+			panic(err)
+		}
 
-		pWant := hefloat.GetPrecisionStats(params, ecd, dec, values, el.Value[0], 0, false)
+		pWant := hefloat.GetPrecisionStats(params, ecd, dec, values, est.Decrypt(el), 0, false)
 		pHave := hefloat.GetPrecisionStats(params, ecd, dec, values, ct, 0, false)
 
 		statsWant.Add(pWant)

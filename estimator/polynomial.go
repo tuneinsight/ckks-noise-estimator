@@ -1,6 +1,7 @@
 package estimator
 
 import (
+	"fmt"
 	"math"
 
 	"github.com/tuneinsight/lattigo/v5/utils/bignum"
@@ -27,18 +28,25 @@ func NewPowerBasis(ct *Element, basis bignum.Basis) (p *PowerBasis) {
 // If lazy = true, the final X^{n} will not be relinearized.
 // Previous non-relinearized X^{n} that are required to compute the target X^{n} are automatically relinearized.
 // Scale sets the threshold for rescaling (ciphertext won't be rescaled if the rescaling operation would make the scale go under this threshold).
-func (p *PowerBasis) GenPower(n int, lazy bool) (err error) {
+func (p *PowerBasis) GenPower(n int, lazy bool, e Estimator) (err error) {
 
 	if _, ok := p.Value[n]; !ok {
-		if p.genPower(n, lazy) {
-			p.Value[n].Rescale()
+		var rescale bool
+		if rescale, err = p.genPower(n, lazy, e); err != nil {
+			return fmt.Errorf("p.genPower: %w", err)
+		}
+
+		if rescale{
+			if err = e.Rescale(p.Value[n], p.Value[n]); err != nil{
+				return fmt.Errorf("e.Rescale: %w", err)
+			}
 		}
 	}
 
 	return nil
 }
 
-func (p *PowerBasis) genPower(n int, lazy bool) (rescale bool) {
+func (p *PowerBasis) genPower(n int, lazy bool, e Estimator) (rescale bool, err error) {
 
 	if _, ok := p.Value[n]; !ok {
 
@@ -61,62 +69,92 @@ func (p *PowerBasis) genPower(n int, lazy bool) (rescale bool) {
 		}
 
 		// Recurses on the given indexes
-		rescaleA := p.genPower(a, lazy && !isPow2)
-		rescaleB := p.genPower(b, lazy && !isPow2)
+		var rescaleA, rescaleB bool
+		if rescaleA, err = p.genPower(a, lazy && !isPow2, e); err != nil{
+			return false, fmt.Errorf("e.genPower: %w", err)
+		}
+
+		if rescaleB, err = p.genPower(b, lazy && !isPow2, e); err != nil{
+			return false, fmt.Errorf("e.genPower: %w", err)
+		}
 
 		// Computes C[n] = C[a]*C[b]
 		if lazy {
 
 			if p.Value[a].Degree == 2 {
-				p.Value[a].Relinearize()
+				if err = e.Relinearize(p.Value[a], p.Value[a]); err != nil{
+					return false, fmt.Errorf("e.Relinearize: %w", err)
+				}
 			}
 
 			if p.Value[b].Degree == 2 {
-				p.Value[b].Relinearize()
+				if err = e.Relinearize(p.Value[b], p.Value[b]); err != nil{
+					return false, fmt.Errorf("e.Relinearize: %w", err)
+				}
 			}
 
 			if rescaleA {
-				p.Value[a].Rescale()
+				if err = e.Rescale(p.Value[a], p.Value[a]); err != nil{
+					return false, fmt.Errorf("e.Relinearize: %w", err)
+				}
 			}
 
 			if rescaleB {
-				p.Value[b].Rescale()
+				if err = e.Rescale(p.Value[b], p.Value[b]); err != nil{
+					return false, fmt.Errorf("e.Relinearize: %w", err)
+				}
 			}
-			p.Value[n] = p.Value[a].CopyNew()
-			p.Value[n].Mul(p.Value[a], p.Value[b])
+
+			if p.Value[n], err = e.MulNew(p.Value[a], p.Value[b]); err != nil{
+				return false, fmt.Errorf("e.MulNew: %w", err)
+			}
 
 		} else {
 
 			if rescaleA {
-				p.Value[a].Rescale()
+				if err = e.Rescale(p.Value[a], p.Value[a]); err != nil{
+					return false, fmt.Errorf("e.Relinearize: %w", err)
+				}
 			}
 
 			if rescaleB {
-				p.Value[b].Rescale()
+				if err = e.Rescale(p.Value[b], p.Value[b]); err != nil{
+					return false, fmt.Errorf("e.Relinearize: %w", err)
+				}
 			}
 
-			p.Value[n] = p.Value[a].CopyNew()
-			p.Value[n].Mul(p.Value[a], p.Value[b])
-			p.Value[n].Relinearize()
+			
+			if p.Value[n], err = e.MulRelinNew(p.Value[a], p.Value[b]); err != nil{
+				return false, fmt.Errorf("e.MulRelinNew: %w", err)
+			}
+
 		}
 
 		if p.Basis == bignum.Chebyshev {
 
 			// Computes C[n] = 2*C[a]*C[b]
-			p.Value[n].Mul(p.Value[n], 2)
+			if err = e.Mul(p.Value[n], 2, p.Value[n]); err != nil{
+				return false, fmt.Errorf("e.Mul: %w", err)
+			}
 
 			// Computes C[n] = 2*C[a]*C[b] - C[c]
 			if c == 0 {
-				p.Value[n].Add(p.Value[n], -1)
+				if err = e.Add(p.Value[n], -1, p.Value[n]); err != nil{
+					return false, fmt.Errorf("e.Mul: %w", err)
+				}
 			} else {
 				// Since C[0] is not stored (but rather seen as the constant 1), only recurses on c if c!= 0
-				p.GenPower(c, lazy)
-				p.Value[n].Sub(p.Value[n], p.Value[c])
+				if err = p.GenPower(c, lazy, e); err != nil{
+					return false, fmt.Errorf("e.GenPower: %w", err) 
+				}
+				if err = e.Sub(p.Value[n], p.Value[c], p.Value[n]); err != nil{
+					return false, fmt.Errorf("e.GenPower: %w", err) 
+				}
 			}
 		}
 
-		return true
+		return true, nil
 	}
 
-	return false
+	return false, nil
 }

@@ -6,19 +6,19 @@ import (
 
 	"github.com/tuneinsight/ckks-bootstrapping-precision/estimator"
 	"github.com/tuneinsight/lattigo/v5/core/rlwe"
+
 	//"github.com/tuneinsight/lattigo/v5/ring"
 	"github.com/tuneinsight/lattigo/v5/he/hefloat"
 	"github.com/tuneinsight/lattigo/v5/utils/bignum"
 )
 
+func main() {
 
-func main(){
-
-	LogN := 16
+	LogN := 14
 	LogScale := 55
 	params, err := hefloat.NewParametersFromLiteral(hefloat.ParametersLiteral{
 		LogN:            LogN,
-		LogQ:            []int{55, 55, 55, 55, 55}, 
+		LogQ:            []int{55, 55, 55, 55, 55},
 		LogP:            []int{61, 61, 61},
 		LogDefaultScale: LogScale,
 		//Xs: ring.Ternary{H:192},
@@ -61,7 +61,7 @@ func main(){
 	enc := hefloat.NewEncryptor(params, pk)
 	dec := hefloat.NewDecryptor(params, sk)
 
-	estParams := estimator.NewParameters(params)
+	est := estimator.NewEstimator(params)
 
 	statsHave := estimator.NewStats()
 	statsWant := estimator.NewStats()
@@ -83,8 +83,8 @@ func main(){
 	DFTMatrix.GenMatrices(params.LogN(), prec)
 
 	DFTMatrixHeFloat, err := hefloat.NewDFTMatrixFromLiteral(params, DFTMatrixLiteral, ecd)
-	
-	if err != nil{
+
+	if err != nil {
 		panic(err)
 	}
 
@@ -93,17 +93,21 @@ func main(){
 	eval := hefloat.NewEvaluator(params, evk)
 	hdftEval := hefloat.NewDFTEvaluator(params, eval)
 
-	for i := 0; i < 128; i++ {
+	for i := 0; i < 1; i++ {
 
 		fmt.Println(i)
 
-		values, el, _, ct := estParams.NewTestVector(ecd, enc, -1-1i, 1+1i)
-		
-		elReal, elImag := el.CoeffsToSlots(DFTMatrix)
+		values, el, _, ct := est.NewTestVector(ecd, enc, -1-1i, 1+1i)
+
+		elReal, elImag, err := est.CoeffsToSlotsNew(el, DFTMatrix)
+
+		if err != nil {
+			panic(err)
+		}
 
 		ctReal, ctImag, err := hdftEval.CoeffsToSlotsNew(ct, DFTMatrixHeFloat)
-		
-		if err != nil{
+
+		if err != nil {
 			panic(err)
 		}
 
@@ -111,45 +115,47 @@ func main(){
 			values = DFTMatrix.Value[i].Evaluate(values, newVec, add, muladd)
 		}
 
-		two := new(big.Float).SetInt64(2)
-		for i := range values{
-			values[i][0].Mul(values[i][0], two)
-			values[i][1].Mul(values[i][1], two)
-		}
-
-		valuesReal := make([]*bignum.Complex, len(values))
-		for i := range valuesReal{
-			valuesReal[i] = &bignum.Complex{
-				values[i][0],
-				new(big.Float),
+		if elImag != nil {
+			two := new(big.Float).SetInt64(2)
+			for i := range values {
+				values[i][0].Mul(values[i][0], two)
+				values[i][1].Mul(values[i][1], two)
 			}
-		}
 
-		elReal.Decrypt()
-		elReal.Normalize()
-
-		pWantReal := hefloat.GetPrecisionStats(params, ecd, nil, valuesReal, elReal.Value[0], 0, false)
-		pHaveReal := hefloat.GetPrecisionStats(params, ecd, dec, valuesReal, ctReal, 0, false)
-
-		statsWant.Add(pWantReal)
-		statsHave.Add(pHaveReal)
-
-		valuesImag := make([]*bignum.Complex, len(values))
-		for i := range valuesImag{
-			valuesImag[i] = &bignum.Complex{
-				values[i][1],
-				new(big.Float),
+			valuesReal := make([]*bignum.Complex, len(values))
+			for i := range valuesReal {
+				valuesReal[i] = &bignum.Complex{
+					values[i][0],
+					new(big.Float),
+				}
 			}
+
+			pWantReal := hefloat.GetPrecisionStats(params, ecd, nil, valuesReal, est.Decrypt(elReal), 0, false)
+			pHaveReal := hefloat.GetPrecisionStats(params, ecd, dec, valuesReal, ctReal, 0, false)
+
+			statsWant.Add(pWantReal)
+			statsHave.Add(pHaveReal)
+
+			valuesImag := make([]*bignum.Complex, len(values))
+			for i := range valuesImag {
+				valuesImag[i] = &bignum.Complex{
+					values[i][1],
+					new(big.Float),
+				}
+			}
+
+			pWantImag := hefloat.GetPrecisionStats(params, ecd, nil, valuesImag, est.Decrypt(elImag), 0, false)
+			pHaveImag := hefloat.GetPrecisionStats(params, ecd, dec, valuesImag, ctImag, 0, false)
+			statsWant.Add(pWantImag)
+			statsHave.Add(pHaveImag)
+		} else {
+
+			pWantReal := hefloat.GetPrecisionStats(params, ecd, nil, values, est.Decrypt(elReal), 0, false)
+			pHaveReal := hefloat.GetPrecisionStats(params, ecd, dec, values, ctReal, 0, false)
+
+			statsWant.Add(pWantReal)
+			statsHave.Add(pHaveReal)
 		}
-
-		elImag.Decrypt()
-		elImag.Normalize()
-
-		pWantImag := hefloat.GetPrecisionStats(params, ecd, nil, valuesImag, elImag.Value[0], 0, false)
-		pHaveImag := hefloat.GetPrecisionStats(params, ecd, dec, valuesImag, ctImag, 0, false)
-		statsWant.Add(pWantImag)
-		statsHave.Add(pHaveImag)
-
 	}
 
 	statsWant.Finalize()

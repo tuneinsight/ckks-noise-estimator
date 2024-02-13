@@ -1,6 +1,7 @@
 package estimator
 
 import (
+	"fmt"
 	"github.com/tuneinsight/lattigo/v5/core/rlwe"
 	"github.com/tuneinsight/lattigo/v5/he"
 	"github.com/tuneinsight/lattigo/v5/he/hefloat"
@@ -22,7 +23,16 @@ func (lt LinearTransformation) BSGSIndex() (index map[int][]int, n1, n2 []int) {
 	return he.BSGSIndex(utils.GetKeys(lt.Value), cols, N1)
 }
 
-func (p *Element) EvaluateLinearTransformation(lt LinearTransformation) *Element {
+func (e Estimator) EvaluateLinearTransformationNew(elIn *Element, lt LinearTransformation) (elOut *Element, err error){
+	elOut = e.NewElement(nil, 1, elIn.Level, elIn.Scale)
+	return elOut, e.EvaluateLinearTransformation(elIn, lt, elOut)
+}
+
+func (e Estimator) EvaluateLinearTransformation(elIn *Element, lt LinearTransformation, elOut *Element) (err error) {
+
+	if elIn.Degree != 1{
+		return fmt.Errorf("elIn.Degree != 1")
+	}
 
 	index, _, rotN2 := lt.BSGSIndex()
 
@@ -31,22 +41,32 @@ func (p *Element) EvaluateLinearTransformation(lt LinearTransformation) *Element
 	for _, k := range rotN2 {
 		if k != 0{
 			if _, ok := ctPreRot[k]; k != 0 && !ok {
-				ctPreRot[k] = p.RotateHoisted(k)
+				if ctPreRot[k], err = e.RotateHoistedNew(elIn, k); err != nil{
+					return fmt.Errorf("e.RotateHoistedNew: %w", err)
+				}
 			}
 		}
 	}
 
-	ctPreRot0 := p.CopyNew().Mul(p, p.P)
+	// TODO: check that no scaling is applied
+	ctPreRot0, err := e.MulNew(elIn, e.P)
+	
+	if err != nil{
+		return fmt.Errorf("e.MulNew: %w", err)
+	}
 
 	keys := utils.GetSortedKeys(index)
 
 	scale := &lt.Scale.Value
 	slots := 1 << lt.LogSlots
 
-	acc := NewElement[*bignum.Complex](*p.Parameters, nil, 1, p.Scale.Mul(lt.Scale))
-	acc.Level = p.Level
-	res := NewElement[*bignum.Complex](*p.Parameters, nil, 1, p.Scale.Mul(lt.Scale))
-	res.Level = p.Level
+	acc := e.NewElement(nil, 1, elIn.Level, elIn.Scale.Mul(lt.Scale))
+	acc.Level = elIn.Level
+
+	elOut.Degree = 1
+	elOut.Scale = elIn.Scale.Mul(lt.Scale)
+	elOut.Level = elIn.Level
+
 	tmp := make([]*bignum.Complex, slots)
 
 	bComplex := bignum.NewComplex()
@@ -73,7 +93,7 @@ func (p *Element) EvaluateLinearTransformation(lt LinearTransformation) *Element
 					coeffsRot0 := ctPreRot0.Value[0]
 					coeffsRot1 := ctPreRot0.Value[1]
 
-					r := p.RoundingNoise()
+					r := e.RoundingNoise()
 
 					for k := range tmp{
 						bComplex[0].Mul(tmp[k][0], scale)
@@ -87,7 +107,7 @@ func (p *Element) EvaluateLinearTransformation(lt LinearTransformation) *Element
 					
 					coeffsRot0 := ctPreRot[i]
 
-					r := p.RoundingNoise()
+					r := e.RoundingNoise()
 
 					for k := range tmp{
 						bComplex[0].Mul(tmp[k][0], scale)
@@ -104,7 +124,7 @@ func (p *Element) EvaluateLinearTransformation(lt LinearTransformation) *Element
 					coeffsRot0 := ctPreRot0.Value[0]
 					coeffsRot1 := ctPreRot0.Value[1]
 
-					r := p.RoundingNoise()
+					r := e.RoundingNoise()
 
 					for k := range tmp{
 						bComplex[0].Mul(tmp[k][0], scale)
@@ -120,7 +140,7 @@ func (p *Element) EvaluateLinearTransformation(lt LinearTransformation) *Element
 					
 					coeffsRot0 := ctPreRot[i]
 
-					r := p.RoundingNoise()
+					r := e.RoundingNoise()
 
 					for k := range tmp{
 						bComplex[0].Mul(tmp[k][0], scale)
@@ -138,7 +158,7 @@ func (p *Element) EvaluateLinearTransformation(lt LinearTransformation) *Element
 		if j != 0 {
 			
 			m0 := acc.Value[0]
-			e0 := p.KeySwitchingNoiseRaw(p.Level, p.RoundingNoise(), p.Sk[0])
+			e0 := e.KeySwitchingNoiseRaw(elOut.Level, e.RoundingNoise(), e.Sk[0])
 			for k := range m0 {
 				m0[k].Add(m0[k], e0[k])
 			}
@@ -147,16 +167,14 @@ func (p *Element) EvaluateLinearTransformation(lt LinearTransformation) *Element
 		}
 
 		for i := 0; i < 2; i++{
-			m0, m1 := res.Value[i], acc.Value[i]
+			m0, m1 := elOut.Value[i], acc.Value[i]
 			for j := range m0{
 				m0[j].Add(m0[j], m1[j])
 			}
 		}
 	}
 
-	res.ModDown()
+	e.ModDown(elOut, elOut)
 
-	*p = *res
-
-	return res
+	return 
 }

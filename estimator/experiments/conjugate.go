@@ -4,6 +4,7 @@ import (
 	"fmt"
 
 	"github.com/tuneinsight/ckks-bootstrapping-precision/estimator"
+	"github.com/tuneinsight/lattigo/v5/core/rlwe"
 	"github.com/tuneinsight/lattigo/v5/he/hefloat"
 )
 
@@ -30,6 +31,10 @@ func main() {
 	enc := hefloat.NewEncryptor(params, pk)
 	dec := hefloat.NewDecryptor(params, sk)
 
+	evk := rlwe.NewMemEvaluationKeySet(nil, kgen.GenGaloisKeyNew(uint64(2*params.N()-1), sk))
+
+	eval := hefloat.NewEvaluator(params, evk)
+
 	est := estimator.NewEstimator(params)
 
 	statsHave := estimator.NewStats()
@@ -40,6 +45,19 @@ func main() {
 		fmt.Println(i)
 
 		values, el, _, ct := est.NewTestVector(ecd, enc, -1-1i, 1+1i)
+
+		//utils.RotateSliceInPlace(values, k)
+		for i := range values {
+			values[i][1].Neg(values[i][1])
+		}
+
+		if err = eval.Conjugate(ct, ct); err != nil {
+			panic(err)
+		}
+
+		if el, err = est.ConjugateNew(el); err != nil {
+			panic(err)
+		}
 
 		pWant := hefloat.GetPrecisionStats(params, ecd, dec, values, est.Decrypt(el), 0, false)
 		pHave := hefloat.GetPrecisionStats(params, ecd, dec, values, ct, 0, false)

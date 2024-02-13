@@ -2,12 +2,13 @@ package main
 
 import (
 	"fmt"
-	"math/big"
 	"math"
+	"math/big"
+
 	"github.com/tuneinsight/ckks-bootstrapping-precision/estimator"
 	"github.com/tuneinsight/lattigo/v5/core/rlwe"
-	"github.com/tuneinsight/lattigo/v5/ring"
 	"github.com/tuneinsight/lattigo/v5/he/hefloat"
+	"github.com/tuneinsight/lattigo/v5/ring"
 	"github.com/tuneinsight/lattigo/v5/utils/bignum"
 	"github.com/tuneinsight/lattigo/v5/utils/sampling"
 )
@@ -22,7 +23,7 @@ func main() {
 		LogQ:            []int{60, 55, 55, 55, 55, 55, 55, 55, 55, 55, 55, 55, 55, 55, 55},
 		LogP:            []int{61, 61, 61, 61, 61},
 		LogDefaultScale: LogScale,
-		Xs: ring.Ternary{H:192},
+		Xs:              ring.Ternary{H: 192},
 	})
 
 	if err != nil {
@@ -42,7 +43,7 @@ func main() {
 
 	eval := hefloat.NewEvaluator(params, evk)
 
-	estParams := estimator.NewParameters(params)
+	est := estimator.NewEstimator(params)
 
 	statsHave := estimator.NewStats()
 	statsWant := estimator.NewStats()
@@ -58,22 +59,22 @@ func main() {
 
 	polyEval := hefloat.NewPolynomialEvaluator(params, eval)
 
-	for i := 0; i < 128; i++ {
+	for i := 0; i < 1; i++ {
 		fmt.Println(i)
 
-		values, el, _, ct := NewTestVector(estParams, ecd, enc, -0.2, 0.2)
+		values, el, _, ct := NewTestVector(est, ecd, enc, -0.2, 0.2)
 
-		for k := 0; k < 7; k++{
+		for k := 0; k < 7; k++ {
 
 			for i := range values {
 				values[i] = poly.Evaluate(values[i])
 
-				if values[i][0].Cmp(new(big.Float).SetFloat64(1e-40)) == -1{
+				if values[i][0].Cmp(new(big.Float).SetFloat64(1e-40)) == -1 {
 					values[i][0].SetFloat64(0)
 				}
 			}
 
-			if el, err = el.EvaluatePolynomial(poly, el.Scale); err != nil {
+			if el, err = est.EvaluatePolynomialNew(el, poly, el.Scale); err != nil {
 				panic(err)
 			}
 
@@ -83,18 +84,13 @@ func main() {
 				panic(err)
 			}
 		}
-			
-		el.Decrypt()
-		el.Normalize()
 
-		pWant := hefloat.GetPrecisionStats(params, ecd, dec, values, el.Value[0], 0, false)
+		pWant := hefloat.GetPrecisionStats(params, ecd, dec, values, est.Decrypt(el), 0, false)
 		pHave := hefloat.GetPrecisionStats(params, ecd, dec, values, ct, 0, false)
 
 		statsWant.Add(pWant)
 		statsHave.Add(pHave)
 	}
-
-	
 
 	statsWant.Finalize()
 	statsHave.Finalize()
@@ -105,10 +101,9 @@ func main() {
 	fmt.Println(estimator.ToLaTeXTable(LogN, LogScale, statsWant, statsHave))
 }
 
+func NewTestVector(est estimator.Estimator, ecd *hefloat.Encoder, enc *rlwe.Encryptor, a, b float64) (values []*bignum.Complex, el *estimator.Element, pt *rlwe.Plaintext, ct *rlwe.Ciphertext) {
 
-func NewTestVector(p estimator.Parameters, ecd *hefloat.Encoder, enc *rlwe.Encryptor, a, b float64) (values []*bignum.Complex, el *estimator.Element, pt *rlwe.Plaintext, ct *rlwe.Ciphertext) {
-
-	params := p.Parameters
+	params := est.Parameters
 
 	prec := ecd.Prec()
 
@@ -124,26 +119,26 @@ func NewTestVector(p estimator.Parameters, ecd *hefloat.Encoder, enc *rlwe.Encry
 	values[0][0].SetFloat64(1)
 	values[0][1].SetFloat64(0)
 
-	el = estimator.NewElement(p, values, 1, params.DefaultScale())
-	el.AddEncodingNoise()
+	el = est.NewElement(values, 1, est.MaxLevel(), est.DefaultScale())
+	est.AddEncodingNoise(el)
 
 	pt = hefloat.NewPlaintext(params, params.MaxLevel())
-	if err := ecd.Encode(values, pt); err != nil{
+	if err := ecd.Encode(values, pt); err != nil {
 		panic(err)
 	}
 
-	if enc != nil{
+	if enc != nil {
 		ct, _ = enc.EncryptNew(pt)
 		switch enc.KeyType().(type) {
 		case *rlwe.SecretKey:
-			el.AddEncryptionNoiseSk()
+			est.AddEncryptionNoiseSk(el)
 		case *rlwe.PublicKey:
-			el.AddEncryptionNoisePk()
+			est.AddEncryptionNoisePk(el)
 		default:
 			panic("INVALID ENCRYPION KEY")
 		}
 	}
-	
+
 	return
 }
 

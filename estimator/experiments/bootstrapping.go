@@ -1,25 +1,27 @@
 package main
 
-import(
+import (
 	"fmt"
+
 	"github.com/tuneinsight/ckks-bootstrapping-precision/estimator"
 	bootEst "github.com/tuneinsight/ckks-bootstrapping-precision/estimator/bootstrapping"
-	"github.com/tuneinsight/lattigo/v5/he/hefloat"
-	"github.com/tuneinsight/lattigo/v5/ring"
 	"github.com/tuneinsight/lattigo/v5/core/rlwe"
-	"github.com/tuneinsight/lattigo/v5/utils"
+	"github.com/tuneinsight/lattigo/v5/he/hefloat"
 	"github.com/tuneinsight/lattigo/v5/he/hefloat/bootstrapping"
+
+	//"github.com/tuneinsight/lattigo/v5/ring"
+	"github.com/tuneinsight/lattigo/v5/utils"
 )
 
-func main(){
-	LogN := 16
+func main() {
+	LogN := 14
 	LogScale := 45
 	params, err := hefloat.NewParametersFromLiteral(hefloat.ParametersLiteral{
 		LogN:            LogN,
-		LogQ:            []int{55, 45}, 
+		LogQ:            []int{55, 45},
 		LogP:            []int{61, 61, 61},
 		LogDefaultScale: LogScale,
-		Xs:              ring.Ternary{H: 192},
+		//Xs:              ring.Ternary{H: 192},
 	})
 
 	if err != nil {
@@ -29,8 +31,7 @@ func main(){
 	btpParametersLit := bootstrapping.ParametersLiteral{
 		LogN: utils.Pointy(params.LogN()),
 		LogP: []int{61, 61, 61, 61},
-		//SlotsToCoeffsFactorizationDepthAndLogScales: [][]int{{45}, {45}, {45}},
-		Xs: params.Xs(),
+		Xs:   params.Xs(),
 	}
 
 	btpParams, err := bootstrapping.NewParametersFromLiteral(params, btpParametersLit)
@@ -54,8 +55,6 @@ func main(){
 		panic(err)
 	}
 
-	fmt.Println(len(evk.GaloisKeys))
-	
 	var eval *bootstrapping.Evaluator
 	if eval, err = bootstrapping.NewEvaluator(btpParams, evk); err != nil {
 		panic(err)
@@ -68,47 +67,27 @@ func main(){
 	statsHave := estimator.NewStats()
 	statsWant := estimator.NewStats()
 
-	for i := 0; i < 1; i++{
+	for i := 0; i < 1; i++ {
 
 		fmt.Println(i)
 
 		values, el, _, ct := estParamsResidual.NewTestVector(ecd, enc, -1-1i, 1+1i)
-		
+
 		// Encrypted
-		ct, _ = eval.Evaluate(ct)
-
-		// Simulated
-		evalEst.ScaleDown(el)
-
-		evalEst.ModUp(el)
-
-		elReal, elImag := evalEst.CoeffsToSlots(el)
-
-		dd := elReal.CopyNew()
-		dd.Decrypt()
-		dd.Normalize()
-		fmt.Println(dd.Value[0][0])
-
-		elReal = evalEst.EvalMod(elReal)
-
-		dd = elReal.CopyNew()
-		dd.Decrypt()
-		dd.Normalize()
-		fmt.Println(dd.Value[0][0])
-
-		if elImag != nil{
-			elImag = evalEst.EvalMod(elImag)
+		if ct, err = eval.Evaluate(ct); err != nil {
+			panic(err)
 		}
 
-		el = evalEst.SlotsToCoeffs(elReal, elImag)
+		// Simulated
+		if el, err = evalEst.Bootstrap(el); err != nil {
+			panic(err)
+		}
 
-		el.Decrypt()
-		el.Normalize()
-
-		fmt.Println(el.Value[0][0])
+		valuesWant := evalEst.ResidualParameters.Decrypt(el)
+		fmt.Println(valuesWant[0])
 		fmt.Println(values[0])
 
-		pWant := hefloat.GetPrecisionStats(params, ecd, dec, values, el.Value[0], 0, false)
+		pWant := hefloat.GetPrecisionStats(params, ecd, dec, values, valuesWant, 0, false)
 		pHave := hefloat.GetPrecisionStats(params, ecd, dec, values, ct, 0, false)
 
 		statsWant.Add(pWant)

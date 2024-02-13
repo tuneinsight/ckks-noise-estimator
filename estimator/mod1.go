@@ -4,6 +4,7 @@ import(
 	"fmt"
 	"math/big"
 	"math/cmplx"
+	"runtime"
 	"github.com/tuneinsight/lattigo/v5/core/rlwe"
 	"github.com/tuneinsight/lattigo/v5/he/hefloat"
 	"github.com/tuneinsight/lattigo/v5/utils/bignum"
@@ -23,38 +24,34 @@ import(
 // !! Assumes that the input is normalized by 1/K for K the range of the approximation.
 //
 // Scaling back error correction by 2^{round(log(Q))}/Q afterward is included in the polynomial
-func (el *Element) EvaluateMod1(evm hefloat.Mod1Parameters) (*Element, error){
-	return el.EvaluateMod1AndScale(evm, 1)
+func (e Estimator) EvaluateMod1New(elIn *Element, evm hefloat.Mod1Parameters) (elOut *Element, err error){
+	return e.EvaluateMod1AndScaleNew(elIn, evm, 1)
 }
 
-func (el *Element) EvaluateMod1AndScale(evm hefloat.Mod1Parameters, scaling complex128) (*Element, error){
+func (e Estimator) EvaluateMod1AndScaleNew(elIn *Element, evm hefloat.Mod1Parameters, scaling complex128) (elOut *Element, err error){
 
-	var err error
-
-	if el.Level < evm.LevelQ {
+	if elIn.Level < evm.LevelQ {
 		return nil, fmt.Errorf("cannot Evaluate: ct.Level() < Mod1Parameters.LevelQ")
 	}
 
-	el.Level = evm.LevelQ
+	elOut = elIn.CopyNew()
 
-	// Stores default scales
-	prevScaleCt := el.Scale
-
+	elOut.Level = evm.LevelQ
 
 	// Normalize the modular reduction to mod by 1 (division by Q)
-	el.Scale = evm.ScalingFactor()
+	elOut.Scale = evm.ScalingFactor()
 
 	// Compute the scales that the ciphertext should have before the double angle
 	// formula such that after it it has the scale it had before the polynomial
 	// evaluation
 
-	params := el.Parameters.Parameters
+	params := e.Parameters.Parameters
 
 	Qi := params.Q()
 
-	targetScale := el.Scale
+	targetScale := elOut.Scale
 	for i := 0; i < evm.DoubleAngle; i++ {
-		targetScale = targetScale.Mul(rlwe.NewScale(Qi[el.Level-evm.Mod1Poly.Depth()-evm.DoubleAngle+i+1]))
+		targetScale = targetScale.Mul(rlwe.NewScale(Qi[elOut.Level-evm.Mod1Poly.Depth()-evm.DoubleAngle+i+1]))
 		targetScale.Value.Sqrt(&targetScale.Value)
 	}
 
@@ -63,7 +60,9 @@ func (el *Element) EvaluateMod1AndScale(evm hefloat.Mod1Parameters, scaling comp
 		offset := new(big.Float).Sub(&evm.Mod1Poly.B, &evm.Mod1Poly.A)
 		offset.Mul(offset, new(big.Float).SetFloat64(evm.IntervalShrinkFactor()))
 		offset.Quo(new(big.Float).SetFloat64(-0.5), offset)
-		el.Add(el, offset)
+		if err = e.Add(elOut, offset, elOut); err != nil{
+			return nil, fmt.Errorf("e.Add: %w", err)
+		}
 	}
 
 	// Double angle
@@ -93,17 +92,29 @@ func (el *Element) EvaluateMod1AndScale(evm hefloat.Mod1Parameters, scaling comp
 	}
 
 	// Chebyshev evaluation
-	if el, err = el.EvaluatePolynomial(mod1Poly, rlwe.NewScale(targetScale)); err != nil {
+	if elOut, err = e.EvaluatePolynomialNew(elOut, mod1Poly, rlwe.NewScale(targetScale)); err != nil {
 		return nil, fmt.Errorf("cannot Evaluate: %w", err)
 	}
 
 	for i := 0; i < evm.DoubleAngle; i++ {
+
 		sqrt2pi *= sqrt2pi
-		el.Mul(el, el)
-		el.Relinearize()
-		el.Mul(el, 2)
-		el.Add(el, -sqrt2pi)
-		el.Rescale()
+
+		if err = e.MulRelin(elOut, elOut, elOut); err != nil{
+			return nil, fmt.Errorf("e.MulRelin: %w", err)
+		}
+
+		if err = e.Mul(elOut, 2, elOut); err != nil{
+			return nil, fmt.Errorf("e.Mul: %w", err)
+		}
+
+		if err = e.Add(elOut, -sqrt2pi, elOut); err != nil{
+			return nil, fmt.Errorf("e.Add: %w", err)
+		}
+
+		if err = e.Rescale(elOut, elOut); err != nil{
+			return nil, fmt.Errorf("e.Rescale: %w", err)
+		}
 	}
 
 	// ArcSine
@@ -121,13 +132,15 @@ func (el *Element) EvaluateMod1AndScale(evm hefloat.Mod1Parameters, scaling comp
 			}
 		}
 
-		if el, err = el.EvaluatePolynomial(mod1InvPoly, el.Scale); err != nil {
+		if elOut, err = e.EvaluatePolynomialNew(elOut, mod1InvPoly, elOut.Scale); err != nil {
 			return nil, fmt.Errorf("cannot Evaluate: %w", err)
 		}
 	}
 
-	// Multiplies back by q
-	el.Scale = prevScaleCt
+	runtime.GC()
 
-	return el, nil
+	// Multiplies back by q
+	elOut.Scale = elIn.Scale
+
+	return
 }

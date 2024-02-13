@@ -3,8 +3,8 @@ package main
 import (
 	"fmt"
 
-	"github.com/tuneinsight/ckks-bootstrapping-precision/estimator"
-	bootEst "github.com/tuneinsight/ckks-bootstrapping-precision/estimator/bootstrapping"
+	"estimator"
+	bootEst "estimator/bootstrapping"
 	"github.com/tuneinsight/lattigo/v5/core/rlwe"
 	"github.com/tuneinsight/lattigo/v5/he/hefloat"
 	"github.com/tuneinsight/lattigo/v5/he/hefloat/bootstrapping"

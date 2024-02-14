@@ -54,7 +54,7 @@ type LinearTransformationParameters struct {
 	// LevelQ is the level at which to encode the linear transformation.
 	LevelQ int
 
-	// LevelP is the level of the auxliary prime used during the automorphisms
+	// LevelP is the level of the auxiliary prime used during the automorphisms
 	// User must ensure that this value is the same as the one used to generate
 	// the evaluation keys used to perform the automorphisms.
 	LevelP int

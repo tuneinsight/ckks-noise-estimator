@@ -4,13 +4,14 @@ import (
 	"fmt"
 	"math"
 	"math/big"
+	"math/rand"
 	"github.com/tuneinsight/lattigo/v5/core/rlwe"
 	"github.com/tuneinsight/lattigo/v5/he/hefloat"
 	"github.com/tuneinsight/lattigo/v5/utils/bignum"
 	"github.com/tuneinsight/lattigo/v5/utils/sampling"
 )
 
-func (e Estimator) NewTestVector(ecd *hefloat.Encoder, enc *rlwe.Encryptor, a, b complex128) (values []*bignum.Complex, el *Element, pt *rlwe.Plaintext, ct *rlwe.Ciphertext) {
+func (e Estimator) NewTestVector(ecd *hefloat.Encoder, enc *rlwe.Encryptor, a, b complex128, trunc... uint) (values []*bignum.Complex, el *Element, pt *rlwe.Plaintext, ct *rlwe.Ciphertext) {
 
 	params := e.Parameters
 
@@ -34,6 +35,91 @@ func (e Estimator) NewTestVector(ecd *hefloat.Encoder, enc *rlwe.Encryptor, a, b
 	pt = hefloat.NewPlaintext(params, params.MaxLevel())
 	if err := ecd.Encode(values, pt); err != nil{
 		panic(err)
+	}
+
+	if len(trunc) != 0{
+		truncval := trunc[0]
+		coeffs := make([]*big.Int, params.N())
+		for i := range coeffs{
+			coeffs[i] = new(big.Int)
+		}
+		params.RingQ().INTT(pt.Value, pt.Value)
+		params.RingQ().PolyToBigintCentered(pt.Value, 1, coeffs)
+		for i := range coeffs{
+			coeffs[i].Rsh(coeffs[i], truncval)
+			coeffs[i].Lsh(coeffs[i], truncval)
+		}
+		params.RingQ().SetCoefficientsBigint(coeffs, pt.Value)
+		params.RingQ().NTT(pt.Value, pt.Value)
+	}
+
+	if enc != nil{
+		ct, _ = enc.EncryptNew(pt)
+		switch enc.KeyType().(type) {
+		case *rlwe.SecretKey:
+			e.AddEncryptionNoiseSk(el)
+		case *rlwe.PublicKey:
+			e.AddEncryptionNoisePk(el)
+		default:
+			panic("INVALID ENCRYPION KEY")
+		}
+	}
+	
+	return
+}
+
+func (e Estimator) TruncatePlaintext(pt *rlwe.Plaintext, trunc *big.Int) (coeffs []*big.Int){
+	params := e.Parameters
+	coeffs = make([]*big.Int, params.N())
+	for i := range coeffs{
+		coeffs[i] = new(big.Int)
+	}
+	rQ := params.RingQ().AtLevel(pt.Level())
+	rQ.INTT(pt.Value, pt.Value)
+	rQ.PolyToBigintCentered(pt.Value, 1, coeffs)
+	for i := range coeffs{
+		bignum.DivRound(coeffs[i], trunc, coeffs[i])
+		coeffs[i].Mul(coeffs[i], trunc)
+	}
+	rQ.SetCoefficientsBigint(coeffs, pt.Value)
+	rQ.NTT(pt.Value, pt.Value)
+	return coeffs
+}
+
+func (e Estimator) NewTestVectorFromSeed(ecd *hefloat.Encoder, enc *rlwe.Encryptor, a, b complex128, seed int64, trunc... *big.Int) (values []*bignum.Complex, el *Element, pt *rlwe.Plaintext, ct *rlwe.Ciphertext) {
+
+	params := e.Parameters
+
+	prec := ecd.Prec()
+
+	values = make([]*bignum.Complex, params.MaxSlots())
+
+	r := rand.New(rand.NewSource(seed))
+
+	Float64 := func(min, max float64) float64 {
+		return (max-min) * r.Float64() + min
+	}
+
+	for i := range values {
+		values[i] = &bignum.Complex{
+			bignum.NewFloat(Float64(real(a), real(b)), prec),
+			bignum.NewFloat(Float64(imag(a), imag(b)), prec),
+		}
+	}
+
+	values[0][0].SetFloat64(1)
+	values[0][1].SetFloat64(0)
+
+	el = e.NewElement(values, 1, params.MaxLevel(), params.DefaultScale())
+	e.AddEncodingNoise(el)
+
+	pt = hefloat.NewPlaintext(params, params.MaxLevel())
+	if err := ecd.Encode(values, pt); err != nil{
+		panic(err)
+	}
+
+	if len(trunc) != 0{
+		e.TruncatePlaintext(pt, trunc[0])
 	}
 
 	if enc != nil{

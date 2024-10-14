@@ -66,7 +66,7 @@ func main() {
 
 		fmt.Println(i)
 
-		values, el, _, ct := est.NewTestVector(ecd, enc, complex(-k+1, 0), complex(k-1, 0))
+		values, el, _, ct := est.NewTestVector(ecd, enc, complex(-k+1, 0), complex(k-1, 0), 20)
 
 		for i := range values {
 			values[i] = poly.Evaluate(values[i])

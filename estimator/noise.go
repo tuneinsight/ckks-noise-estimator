@@ -6,7 +6,7 @@ import (
 	"math/rand"
 	"time"
 
-	"github.com/tuneinsight/lattigo/v5/utils/bignum"
+	"github.com/tuneinsight/lattigo/v6/utils/bignum"
 )
 
 // Noise samples noise in R[X]/(X^N+1) according to f(), scales it by 2^-logScale and
@@ -174,7 +174,7 @@ func (e Estimator) KeySwitchingNoiseRaw(levelQ int, eCt, sk []*bignum.Complex) (
 			// prod[qi * ... * ]
 			qalphai := NewFloat(1)
 			for i := start; i < end; i++ {
-				qalphai.Mul(qalphai, e.Q[i])
+				qalphai.Mul(qalphai, &e.Q[i])
 			}
 
 			// variances (delays)
@@ -198,14 +198,14 @@ func (e Estimator) KeySwitchingNoiseRaw(levelQ int, eCt, sk []*bignum.Complex) (
 		e.AddNoiseRingToCanonical(f64*e.Sigma, noise)
 
 		/*
-		stdR, stdI := Log2STD(e)
-		maxR, maxI := Log2MAX(e)
-		avgR, avgI := Log2AVG(e)
+			stdR, stdI := Log2STD(e)
+			maxR, maxI := Log2MAX(e)
+			avgR, avgI := Log2AVG(e)
 
-		fmt.Println(stdR, stdI)
-		fmt.Println(maxR, maxI)
-		fmt.Println(avgR, avgI)
-		fmt.Println()
+			fmt.Println(stdR, stdI)
+			fmt.Println(maxR, maxI)
+			fmt.Println(avgR, avgI)
+			fmt.Println()
 		*/
 
 	} else {
@@ -221,7 +221,7 @@ func (e Estimator) KeySwitchingNoiseRaw(levelQ int, eCt, sk []*bignum.Complex) (
 			//std(q_alpha_i) * eKey
 			qalphai := NewFloat(1)
 			for i := start; i < end; i++ {
-				qalphai.Mul(qalphai, e.Q[i])
+				qalphai.Mul(qalphai, &e.Q[i])
 			}
 
 			qalphaiHalf := new(big.Float).Quo(qalphai, new(big.Float).SetInt64(2))
@@ -248,14 +248,14 @@ func (e Estimator) KeySwitchingNoiseRaw(levelQ int, eCt, sk []*bignum.Complex) (
 		}
 
 		/*
-		stdR, stdI := Log2STD(noise)
-		maxR, maxI := Log2MAX(noise)
-		avgR, avgI := Log2AVG(noise)
+			stdR, stdI := Log2STD(noise)
+			maxR, maxI := Log2MAX(noise)
+			avgR, avgI := Log2AVG(noise)
 
-		fmt.Println(stdR, stdI)
-		fmt.Println(maxR, maxI)
-		fmt.Println(avgR, avgI)
-		fmt.Println()
+			fmt.Println(stdR, stdI)
+			fmt.Println(maxR, maxI)
+			fmt.Println(avgR, avgI)
+			fmt.Println()
 		*/
 	}
 

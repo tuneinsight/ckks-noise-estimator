@@ -5,27 +5,26 @@ import (
 	"math/rand"
 	"time"
 
-	"github.com/tuneinsight/lattigo/v5/core/rlwe"
-	"github.com/tuneinsight/lattigo/v5/he/hefloat"
-	"github.com/tuneinsight/lattigo/v5/utils"
-	"github.com/tuneinsight/lattigo/v5/utils/bignum"
+	"github.com/tuneinsight/lattigo/v6/core/rlwe"
+	"github.com/tuneinsight/lattigo/v6/schemes/ckks"
+	"github.com/tuneinsight/lattigo/v6/utils/bignum"
 )
 
 type Estimator struct {
-	Parameters hefloat.Parameters
+	Parameters ckks.Parameters
 	Encoder
 	LogN      int
 	Sigma     float64
 	Scale     rlwe.Scale
 	H         int
-	Q         []*big.Float
+	Q         []big.Float
 	P         *big.Float
 	LevelP    int
 	Sk        [][]*bignum.Complex
 	Heuristic bool
 }
 
-func NewEstimator(p hefloat.Parameters) (e Estimator) {
+func NewEstimator(p ckks.Parameters) (e Estimator) {
 
 	e = Estimator{}
 	e.Parameters = p
@@ -37,9 +36,9 @@ func NewEstimator(p hefloat.Parameters) (e Estimator) {
 	Q := p.Q()
 	P := p.P()
 
-	Qi := make([]*big.Float, len(Q))
+	Qi := make([]big.Float, len(Q))
 	for i := range Q {
-		Qi[i] = NewFloat(Q[i])
+		Qi[i] = *NewFloat(Q[i])
 	}
 	e.Q = Qi
 
@@ -48,11 +47,11 @@ func NewEstimator(p hefloat.Parameters) (e Estimator) {
 		Pi.Mul(Pi, NewFloat(P[i]))
 	}
 	e.P = Pi
-	e.LevelP =  len(P) - 1
+	e.LevelP = len(P) - 1
 
 	e.Encoder = *NewEncoder(p.LogN(), prec)
 
-	e.H = utils.Min(p.N(), p.XsHammingWeight())
+	e.H = min(p.N(), p.XsHammingWeight())
 
 	// Samples a secret-key
 	sk := e.SampleSecretKey(e.H)
@@ -66,14 +65,14 @@ func NewEstimator(p hefloat.Parameters) (e Estimator) {
 
 	e.Sk = [][]*bignum.Complex{sk, sk2}
 
-	return 
+	return
 }
 
 func (e Estimator) SampleSecretKey(H int) (sk []*bignum.Complex) {
 
 	N := e.N()
 
-	H = utils.Min(N, H)
+	H = min(N, H)
 
 	skF := make([]*big.Float, N)
 	for i := 0; i < H; i++ {
@@ -125,7 +124,6 @@ func (e Estimator) DefaultScale() rlwe.Scale {
 	return e.Scale
 }
 
-
 // Decrypt decrypts the element by evaluating <(el0, el1, el2), (1, sk, sk^2)>.
 func (e Estimator) Decrypt(el *Element) (values []*bignum.Complex) {
 
@@ -133,7 +131,7 @@ func (e Estimator) Decrypt(el *Element) (values []*bignum.Complex) {
 
 	values = make([]*bignum.Complex, e.MaxSlots())
 
-	for i := range values{
+	for i := range values {
 		values[i] = bignum.NewComplex().Set(v[i])
 	}
 
@@ -151,7 +149,7 @@ func (e Estimator) Decrypt(el *Element) (values []*bignum.Complex) {
 
 	scale := &el.Scale.Value
 
-	for i := range values{
+	for i := range values {
 		values[i][0].Quo(values[i][0], scale)
 		values[i][1].Quo(values[i][1], scale)
 	}
@@ -195,11 +193,11 @@ func (e Estimator) AddEncryptionNoiseSk(el *Element) {
 // from PK encryption, which is {round(1/2), round(1/2)}
 // This assumes that P != 0 and that |N * e * sk| < P.
 func (e Estimator) AddEncryptionNoisePk(el *Element) {
-	el.Degree = utils.Max(1, el.Degree)
+	el.Degree = max(1, el.Degree)
 	e.AddRoundingNoise(el)
 }
 
-func (e Estimator) AddKeySwitchingNoise(el *Element, sk []*bignum.Complex){
+func (e Estimator) AddKeySwitchingNoise(el *Element, sk []*bignum.Complex) {
 	e0, e1 := e.KeySwitchingNoise(el.Level, el.Value[1], sk)
 	m0, m1 := el.Value[0], el.Value[1]
 	for i := range m0 {
@@ -234,4 +232,3 @@ func (e Estimator) AddRelinearizationNoise(el *Element) {
 		m1[i].Add(m1[i], e1[i])
 	}
 }
-

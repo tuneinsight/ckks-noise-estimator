@@ -1,13 +1,14 @@
 package estimator
 
-import(
+import (
 	"fmt"
 	"math/big"
 	"math/cmplx"
 	"runtime"
-	"github.com/tuneinsight/lattigo/v5/core/rlwe"
-	"github.com/tuneinsight/lattigo/v5/he/hefloat"
-	"github.com/tuneinsight/lattigo/v5/utils/bignum"
+
+	"github.com/tuneinsight/lattigo/v6/circuits/ckks/mod1"
+	"github.com/tuneinsight/lattigo/v6/core/rlwe"
+	"github.com/tuneinsight/lattigo/v6/utils/bignum"
 )
 
 // EvaluteMod1 applies a homomorphic mod Q on a vector scaled by Delta, scaled down to mod 1 :
@@ -24,11 +25,11 @@ import(
 // !! Assumes that the input is normalized by 1/K for K the range of the approximation.
 //
 // Scaling back error correction by 2^{round(log(Q))}/Q afterward is included in the polynomial
-func (e Estimator) EvaluateMod1New(elIn *Element, evm hefloat.Mod1Parameters) (elOut *Element, err error){
+func (e Estimator) EvaluateMod1New(elIn *Element, evm mod1.Parameters) (elOut *Element, err error) {
 	return e.EvaluateMod1AndScaleNew(elIn, evm, 1)
 }
 
-func (e Estimator) EvaluateMod1AndScaleNew(elIn *Element, evm hefloat.Mod1Parameters, scaling complex128) (elOut *Element, err error){
+func (e Estimator) EvaluateMod1AndScaleNew(elIn *Element, evm mod1.Parameters, scaling complex128) (elOut *Element, err error) {
 
 	if elIn.Level < evm.LevelQ {
 		return nil, fmt.Errorf("cannot Evaluate: ct.Level() < Mod1Parameters.LevelQ")
@@ -56,11 +57,11 @@ func (e Estimator) EvaluateMod1AndScaleNew(elIn *Element, evm hefloat.Mod1Parame
 	}
 
 	// Division by 1/2^r and change of variable for the Chebyshev evaluation
-	if evm.Mod1Type == hefloat.CosDiscrete || evm.Mod1Type == hefloat.CosContinuous {
+	if evm.Mod1Type == mod1.CosDiscrete || evm.Mod1Type == mod1.CosContinuous {
 		offset := new(big.Float).Sub(&evm.Mod1Poly.B, &evm.Mod1Poly.A)
 		offset.Mul(offset, new(big.Float).SetFloat64(evm.IntervalShrinkFactor()))
 		offset.Quo(new(big.Float).SetFloat64(-0.5), offset)
-		if err = e.Add(elOut, offset, elOut); err != nil{
+		if err = e.Add(elOut, offset, elOut); err != nil {
 			return nil, fmt.Errorf("e.Add: %w", err)
 		}
 	}
@@ -100,19 +101,19 @@ func (e Estimator) EvaluateMod1AndScaleNew(elIn *Element, evm hefloat.Mod1Parame
 
 		sqrt2pi *= sqrt2pi
 
-		if err = e.MulRelin(elOut, elOut, elOut); err != nil{
+		if err = e.MulRelin(elOut, elOut, elOut); err != nil {
 			return nil, fmt.Errorf("e.MulRelin: %w", err)
 		}
 
-		if err = e.Mul(elOut, 2, elOut); err != nil{
+		if err = e.Mul(elOut, 2, elOut); err != nil {
 			return nil, fmt.Errorf("e.Mul: %w", err)
 		}
 
-		if err = e.Add(elOut, -sqrt2pi, elOut); err != nil{
+		if err = e.Add(elOut, -sqrt2pi, elOut); err != nil {
 			return nil, fmt.Errorf("e.Add: %w", err)
 		}
 
-		if err = e.Rescale(elOut, elOut); err != nil{
+		if err = e.Rescale(elOut, elOut); err != nil {
 			return nil, fmt.Errorf("e.Rescale: %w", err)
 		}
 	}

@@ -4,8 +4,8 @@ import (
 	"fmt"
 	"math/big"
 
-	"github.com/tuneinsight/lattigo/v5/schemes/ckks"
-	"github.com/tuneinsight/lattigo/v5/utils/bignum"
+	"github.com/tuneinsight/lattigo/v6/schemes/ckks"
+	"github.com/tuneinsight/lattigo/v6/utils/bignum"
 )
 
 const (
@@ -14,7 +14,7 @@ const (
 
 type Encoder struct {
 	prec         uint
-	bigintCoeffs []*big.Int
+	bigintCoeffs []big.Int
 	m            int
 	rotGroup     []int
 	roots        interface{}
@@ -35,7 +35,7 @@ func NewEncoder(LogN int, prec uint) (ecd *Encoder) {
 
 	ecd = &Encoder{
 		prec:         prec,
-		bigintCoeffs: make([]*big.Int, m>>1),
+		bigintCoeffs: make([]big.Int, m>>1),
 		m:            m,
 		rotGroup:     rotGroup,
 	}
@@ -82,7 +82,7 @@ func (ecd Encoder) IFFT(values interface{}, logN int) (err error) {
 			return fmt.Errorf("cannot IFFT: values.(type)=%T doesn't roots.(type) = %T", values, roots)
 		}
 	default:
-		return fmt.Errorf("cannot IFFT: invalid values.(type), accepted types are []complex128 and []bignum.Complex but is %T", values)
+		return fmt.Errorf("cannot IFFT: invalid values.(type), accepted types are []complex128 and []*bignum.Complex but is %T", values)
 	}
 	return
 

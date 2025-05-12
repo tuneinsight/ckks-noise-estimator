@@ -1,9 +1,9 @@
 package estimator
 
-import(
+import (
 	"fmt"
+	"github.com/tuneinsight/lattigo/v6/utils"
 	"math"
-	"github.com/tuneinsight/lattigo/v5/utils"
 )
 
 func (e Estimator) GoldschmidtDivisionNew(el *Element, log2min float64) (a *Element, err error) {
@@ -21,44 +21,44 @@ func (e Estimator) GoldschmidtDivisionNew(el *Element, log2min float64) (a *Elem
 
 	iters = utils.Max(iters, 3)
 
-	if a, err = e.MulNew(el, -1); err != nil{
+	if a, err = e.MulNew(el, -1); err != nil {
 		return nil, fmt.Errorf("e.MulNew: %w", err)
 	}
 
 	var b *Element
-	if b, err = e.AddNew(a, 1); err != nil{
+	if b, err = e.AddNew(a, 1); err != nil {
 		return nil, fmt.Errorf("e.AddNew: %w", err)
 	}
 
-	if err = e.Add(a, 2, a); err != nil{
+	if err = e.Add(a, 2, a); err != nil {
 		return nil, fmt.Errorf("e.Add: %w", err)
 	}
 
 	tmp := e.NewElement(nil, 1, a.Level, a.Scale)
 
-	for j := 1; j < iters; j++{
+	for j := 1; j < iters; j++ {
 
-		if err = e.MulRelin(b, b, b); err != nil{
+		if err = e.MulRelin(b, b, b); err != nil {
 			return nil, fmt.Errorf("e.MulRelin: %w", err)
 		}
 
-		if err = e.Rescale(b, b); err != nil{
+		if err = e.Rescale(b, b); err != nil {
 			return nil, fmt.Errorf("e.Rescale: %w", err)
 		}
 
-		if err = e.MulRelin(a, b, tmp); err != nil{
+		if err = e.MulRelin(a, b, tmp); err != nil {
 			return nil, fmt.Errorf("e.MulRelin: %w", err)
 		}
 
-		if err = e.Rescale(tmp, tmp); err != nil{
+		if err = e.Rescale(tmp, tmp); err != nil {
 			return nil, fmt.Errorf("e.Rescale: %w", err)
 		}
 
-		if err = e.SetScale(a, tmp.Scale); err != nil{
+		if err = e.SetScale(a, tmp.Scale); err != nil {
 			return nil, fmt.Errorf("e.SetScale: %w", err)
 		}
 
-		if err = e.Add(a, tmp, a); err != nil{
+		if err = e.Add(a, tmp, a); err != nil {
 			return nil, fmt.Errorf("e.Add: %w", err)
 		}
 	}

@@ -5,13 +5,12 @@ import (
 	"math"
 	"math/big"
 
-	"estimator"
-	"github.com/tuneinsight/lattigo/v5/core/rlwe"
-	"github.com/tuneinsight/lattigo/v5/he/hefloat"
-	"github.com/tuneinsight/lattigo/v5/he/hefloat/bootstrapping"
-	"github.com/tuneinsight/lattigo/v5/ring"
-	"github.com/tuneinsight/lattigo/v5/utils/bignum"
-	"github.com/tuneinsight/lattigo/v5/utils/sampling"
+	"github.com/tuneinsight/ckks-noise-estimator"
+	"github.com/tuneinsight/lattigo/v6/circuits/ckks/bootstrapping"
+	"github.com/tuneinsight/lattigo/v6/circuits/ckks/mod1"
+	"github.com/tuneinsight/lattigo/v6/core/rlwe"
+	"github.com/tuneinsight/lattigo/v6/ring"
+	"github.com/tuneinsight/lattigo/v6/utils/bignum"
 )
 
 type Evaluator struct {
@@ -22,7 +21,7 @@ type Evaluator struct {
 
 	S2CDFTMatrix   estimator.DFTMatrix
 	C2SDFTMatrix   estimator.DFTMatrix
-	Mod1Parameters hefloat.Mod1Parameters
+	Mod1Parameters mod1.Parameters
 
 	EphemeralSecret []*bignum.Complex
 }
@@ -35,7 +34,7 @@ func NewEvaluator(btpParams bootstrapping.Parameters) Evaluator {
 		BootstrappingParameters: estimator.NewEstimator(btpParams.BootstrappingParameters),
 	}
 
-	if btpParams.EphemeralSecretWeight != 0{
+	if btpParams.EphemeralSecretWeight != 0 {
 		eval.EphemeralSecret = eval.BootstrappingParameters.SampleSecretKey(btpParams.EphemeralSecretWeight)
 	}
 
@@ -48,7 +47,7 @@ func (eval *Evaluator) initialize(btpParams bootstrapping.Parameters) (err error
 
 	params := btpParams.BootstrappingParameters
 
-	if eval.Mod1Parameters, err = hefloat.NewMod1ParametersFromLiteral(params, btpParams.Mod1ParametersLiteral); err != nil {
+	if eval.Mod1Parameters, err = mod1.NewParametersFromLiteral(params, btpParams.Mod1ParametersLiteral); err != nil {
 		return
 	}
 
@@ -78,7 +77,7 @@ func (eval *Evaluator) initialize(btpParams bootstrapping.Parameters) (err error
 	C2SScaling := new(big.Float).SetFloat64(qDiv / (K * qDiff))
 	StCScaling := new(big.Float).SetFloat64(scale / offset)
 
-	eval.C2SDFTMatrix = estimator.DFTMatrix{DFTMatrixLiteral: btpParams.CoeffsToSlotsParameters}
+	eval.C2SDFTMatrix = estimator.DFTMatrix{MatrixLiteral: btpParams.CoeffsToSlotsParameters}
 	if eval.C2SDFTMatrix.Scaling == nil {
 		eval.C2SDFTMatrix.Scaling = C2SScaling
 	} else {
@@ -87,7 +86,7 @@ func (eval *Evaluator) initialize(btpParams bootstrapping.Parameters) (err error
 
 	eval.C2SDFTMatrix.GenMatrices(btpParams.BootstrappingParameters.LogN(), 128)
 
-	eval.S2CDFTMatrix = estimator.DFTMatrix{DFTMatrixLiteral: btpParams.SlotsToCoeffsParameters}
+	eval.S2CDFTMatrix = estimator.DFTMatrix{MatrixLiteral: btpParams.SlotsToCoeffsParameters}
 	if eval.S2CDFTMatrix.Scaling == nil {
 		eval.S2CDFTMatrix.Scaling = StCScaling
 	} else {
@@ -109,26 +108,26 @@ func checkMessageRatio(el *estimator.Element, msgRatio float64, r *ring.Ring) bo
 
 func (eval Evaluator) Bootstrap(elIn *estimator.Element) (elOut *estimator.Element, err error) {
 
-	if _, err = eval.ScaleDown(elIn); err != nil{
+	if _, err = eval.ScaleDown(elIn); err != nil {
 		return nil, fmt.Errorf("eval.ScaleDown: %w", err)
 	}
 
-	if err = eval.ModUp(elIn); err != nil{
+	if err = eval.ModUp(elIn); err != nil {
 		return nil, fmt.Errorf("eval.ModUp: %w", err)
 	}
 
 	elReal, elImag, err := eval.CoeffsToSlotsNew(elIn)
 
-	if err != nil{
+	if err != nil {
 		return nil, fmt.Errorf("eval.CoeffsToSlotsNew: %w", err)
 	}
 
-	if elReal, err = eval.EvalModNew(elReal); err != nil{
+	if elReal, err = eval.EvalModNew(elReal); err != nil {
 		return nil, fmt.Errorf("eval.EvalModNew: %w", err)
 	}
 
-	if elImag != nil{
-		if elImag, err = eval.EvalModNew(elImag); err != nil{
+	if elImag != nil {
+		if elImag, err = eval.EvalModNew(elImag); err != nil {
 			return nil, fmt.Errorf("eval.EvalModNew: %w", err)
 		}
 	}
@@ -165,7 +164,7 @@ func (eval Evaluator) ScaleDown(el *estimator.Element) (*rlwe.Scale, error) {
 
 	scaleUpBigint := scaleUp.BigInt()
 
-	if err := est.Mul(el, scaleUpBigint, el); err != nil{
+	if err := est.Mul(el, scaleUpBigint, el); err != nil {
 		return nil, fmt.Errorf("est.Mul: %w", err)
 	}
 
@@ -176,7 +175,7 @@ func (eval Evaluator) ScaleDown(el *estimator.Element) (*rlwe.Scale, error) {
 	targetScale.Quo(targetScale, new(big.Float).SetFloat64(eval.Mod1Parameters.MessageRatio()))
 
 	if el.Level != 0 {
-		if err := est.Rescale(el, el); err != nil{
+		if err := est.Rescale(el, el); err != nil {
 			return nil, fmt.Errorf("est.Rescale: %w", err)
 		}
 	}
@@ -192,12 +191,12 @@ func (eval Evaluator) ModUp(el *estimator.Element) (err error) {
 	est := eval.BootstrappingParameters
 
 	var H int
-	if eval.EphemeralSecret != nil{
-		if err = est.KeySwitch(el, eval.BootstrappingParameters.Sk[0]); err != nil{
+	if eval.EphemeralSecret != nil {
+		if err = est.KeySwitch(el, eval.BootstrappingParameters.Sk[0]); err != nil {
 			return fmt.Errorf("est.KeySwitch: %w", err)
 		}
 		H = eval.EphemeralSecretWeight
-	}else{
+	} else {
 		H = eval.BootstrappingParameters.H
 	}
 
@@ -205,15 +204,16 @@ func (eval Evaluator) ModUp(el *estimator.Element) (err error) {
 
 	Q := eval.BootstrappingParameters.Q[0]
 
+	source := estimator.NewTestRand()
 	irwinHall := func() *big.Float {
 		var d float64
 		for i := 0; i < H+1; i++ {
-			d += sampling.RandFloat64(0, 1)
+			d += source.Float64(0, 1)
 		}
 
 		K.SetFloat64(math.Floor(d) - float64(H>>1))
 
-		return new(big.Float).Mul(K, Q)
+		return new(big.Float).Mul(K, &Q)
 	}
 
 	values := make([]*bignum.Complex, est.MaxSlots())
@@ -231,15 +231,15 @@ func (eval Evaluator) ModUp(el *estimator.Element) (err error) {
 
 	el.Level = est.MaxLevel()
 
-	if eval.EphemeralSecret != nil{
-		if err = est.KeySwitch(el, eval.EphemeralSecret); err != nil{
+	if eval.EphemeralSecret != nil {
+		if err = est.KeySwitch(el, eval.EphemeralSecret); err != nil {
 			return fmt.Errorf("est.KeySwitch: %w", err)
 		}
 	}
 
 	// Scale the message from Q0/|m| to QL/|m|, where QL is the largest modulus used during the bootstrapping.
 	if scale := (eval.Mod1Parameters.ScalingFactor().Float64() / eval.Mod1Parameters.MessageRatio()) / el.Scale.Float64(); scale > 1 {
-		if err = est.ScaleUp(el, rlwe.NewScale(scale)); err != nil{
+		if err = est.ScaleUp(el, rlwe.NewScale(scale)); err != nil {
 			return fmt.Errorf("est.ScaleUp: %w", err)
 		}
 	}
@@ -247,16 +247,16 @@ func (eval Evaluator) ModUp(el *estimator.Element) (err error) {
 	return
 }
 
-func (eval Evaluator) CoeffsToSlotsNew(el *estimator.Element) (elReal, elImag *estimator.Element, err error){
+func (eval Evaluator) CoeffsToSlotsNew(el *estimator.Element) (elReal, elImag *estimator.Element, err error) {
 	return eval.BootstrappingParameters.CoeffsToSlotsNew(el, eval.C2SDFTMatrix)
 }
 
-func (eval Evaluator) SlotsToCoeffsNew(elReal, elImag *estimator.Element) (el *estimator.Element, err error){
+func (eval Evaluator) SlotsToCoeffsNew(elReal, elImag *estimator.Element) (el *estimator.Element, err error) {
 	return eval.BootstrappingParameters.SlotsToCoeffsNew(elReal, elImag, eval.S2CDFTMatrix)
 }
 
-func (eval Evaluator) EvalModNew(elIn *estimator.Element) (elOut *estimator.Element, err error){
-	if elOut, err = eval.BootstrappingParameters.EvaluateMod1New(elIn, eval.Mod1Parameters); err != nil{
+func (eval Evaluator) EvalModNew(elIn *estimator.Element) (elOut *estimator.Element, err error) {
+	if elOut, err = eval.BootstrappingParameters.EvaluateMod1New(elIn, eval.Mod1Parameters); err != nil {
 		return nil, fmt.Errorf("eval.EvaluateMod1New: %w", err)
 	}
 	elOut.Scale = eval.BootstrappingParameters.DefaultScale()

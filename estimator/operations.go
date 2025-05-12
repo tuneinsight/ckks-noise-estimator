@@ -4,12 +4,12 @@ import (
 	"fmt"
 	"math/big"
 
-	"github.com/tuneinsight/lattigo/v5/core/rlwe"
-	"github.com/tuneinsight/lattigo/v5/utils"
-	"github.com/tuneinsight/lattigo/v5/utils/bignum"
+	"github.com/tuneinsight/lattigo/v6/core/rlwe"
+	"github.com/tuneinsight/lattigo/v6/utils"
+	"github.com/tuneinsight/lattigo/v6/utils/bignum"
 )
 
-func (e Estimator) AddNew(op0 *Element, op1 rlwe.Operand) (op2 *Element, err error){
+func (e Estimator) AddNew(op0 *Element, op1 rlwe.Operand) (op2 *Element, err error) {
 	op2 = op0.CopyNew()
 	return op2, e.Add(op0, op1, op2)
 }
@@ -29,7 +29,7 @@ func (e Estimator) Add(op0 *Element, op1 rlwe.Operand, op2 *Element) (err error)
 			// Only scales up if int(ratio) >= 2
 			if ratio.Float64() >= 2.0 {
 				tmp0 = op0.CopyNew()
-				if err = e.Mul(tmp0, ratio.BigInt(), tmp0); err != nil{
+				if err = e.Mul(tmp0, ratio.BigInt(), tmp0); err != nil {
 					return fmt.Errorf("e.Mul: %w", err)
 				}
 				op2.Scale = op1.Scale
@@ -48,7 +48,7 @@ func (e Estimator) Add(op0 *Element, op1 rlwe.Operand, op2 *Element) (err error)
 			// Only scales up if int(ratio) >= 2
 			if ratio.Float64() >= 2.0 {
 				tmp1 = op1.CopyNew()
-				if err = e.Mul(tmp1, ratio.BigInt(), tmp1); err != nil{
+				if err = e.Mul(tmp1, ratio.BigInt(), tmp1); err != nil {
 					return fmt.Errorf("e.Mul: %w", err)
 				}
 				op2.Scale = op0.Scale
@@ -59,8 +59,8 @@ func (e Estimator) Add(op0 *Element, op1 rlwe.Operand, op2 *Element) (err error)
 			tmp0 = op0
 		}
 
-		op2.Level = utils.Min(op0.Level, op1.Level)
-		op2.Degree = utils.Max(op0.Degree, op1.Degree)
+		op2.Level = min(op0.Level, op1.Level)
+		op2.Degree = max(op0.Degree, op1.Degree)
 
 		for i := 0; i < op2.Degree+1; i++ {
 			m0 := tmp0.Value[i]
@@ -86,7 +86,7 @@ func (e Estimator) Add(op0 *Element, op1 rlwe.Operand, op2 *Element) (err error)
 		}
 
 	case []*bignum.Complex:
-		
+
 		bComplex := &bignum.Complex{new(big.Float).SetPrec(prec), new(big.Float).SetPrec(prec)}
 
 		m2 := op2.Value[0]
@@ -95,7 +95,7 @@ func (e Estimator) Add(op0 *Element, op1 rlwe.Operand, op2 *Element) (err error)
 
 		m0 := op0.Value[0]
 
-		for i := range op1{
+		for i := range op1 {
 			bComplex[0].Mul(op1[i][0], scale)
 			bComplex[1].Mul(op1[i][1], scale)
 			Round(bComplex[0])
@@ -112,7 +112,7 @@ func (e Estimator) Add(op0 *Element, op1 rlwe.Operand, op2 *Element) (err error)
 	return
 }
 
-func (e Estimator) SubNew(op0 *Element, op1 rlwe.Operand) (op2 *Element, err error){
+func (e Estimator) SubNew(op0 *Element, op1 rlwe.Operand) (op2 *Element, err error) {
 	op2 = op0.CopyNew()
 	return op2, e.Sub(op0, op1, op2)
 }
@@ -132,7 +132,7 @@ func (e Estimator) Sub(op0 *Element, op1 rlwe.Operand, op2 *Element) (err error)
 			// Only scales up if int(ratio) >= 2
 			if ratio.Float64() >= 2.0 {
 				tmp0 = op0.CopyNew()
-				if err = e.Mul(tmp0, ratio.BigInt(), tmp0); err != nil{
+				if err = e.Mul(tmp0, ratio.BigInt(), tmp0); err != nil {
 					return fmt.Errorf("e.Mul: %w", err)
 				}
 				op2.Scale = op1.Scale
@@ -151,7 +151,7 @@ func (e Estimator) Sub(op0 *Element, op1 rlwe.Operand, op2 *Element) (err error)
 			// Only scales up if int(ratio) >= 2
 			if ratio.Float64() >= 2.0 {
 				tmp1 = op1.CopyNew()
-				if err = e.Mul(tmp1, ratio.BigInt(), tmp1); err != nil{
+				if err = e.Mul(tmp1, ratio.BigInt(), tmp1); err != nil {
 					return fmt.Errorf("e.Mul: %w", err)
 				}
 				op2.Scale = op0.Scale
@@ -162,8 +162,8 @@ func (e Estimator) Sub(op0 *Element, op1 rlwe.Operand, op2 *Element) (err error)
 			tmp0 = op0
 		}
 
-		op2.Level = utils.Min(op0.Level, op1.Level)
-		op2.Degree = utils.Max(op0.Degree, op1.Degree)
+		op2.Level = min(op0.Level, op1.Level)
+		op2.Degree = max(op0.Degree, op1.Degree)
 
 		for i := 0; i < op2.Degree+1; i++ {
 			m0 := tmp0.Value[i]
@@ -189,7 +189,7 @@ func (e Estimator) Sub(op0 *Element, op1 rlwe.Operand, op2 *Element) (err error)
 		}
 
 	case []*bignum.Complex:
-		
+
 		bComplex := &bignum.Complex{new(big.Float).SetPrec(prec), new(big.Float).SetPrec(prec)}
 
 		m2 := op2.Value[0]
@@ -198,7 +198,7 @@ func (e Estimator) Sub(op0 *Element, op1 rlwe.Operand, op2 *Element) (err error)
 
 		m0 := op0.Value[0]
 
-		for i := range op1{
+		for i := range op1 {
 			bComplex[0].Mul(op1[i][0], scale)
 			bComplex[1].Mul(op1[i][1], scale)
 			Round(bComplex[0])
@@ -214,33 +214,33 @@ func (e Estimator) Sub(op0 *Element, op1 rlwe.Operand, op2 *Element) (err error)
 	return
 }
 
-func (e Estimator) MulRelin(op0 *Element, op1 rlwe.Operand, op2 *Element) (err error){
+func (e Estimator) MulRelin(op0 *Element, op1 rlwe.Operand, op2 *Element) (err error) {
 
-	if err = e.Mul(op0, op1, op2); err != nil{
+	if err = e.Mul(op0, op1, op2); err != nil {
 		return fmt.Errorf("e.Mul: %w", err)
 	}
 
-	if err = e.Relinearize(op2, op2); err != nil{
+	if err = e.Relinearize(op2, op2); err != nil {
 		return fmt.Errorf("e.Relinearize: %w", err)
 	}
 
 	return
 }
 
-func (e Estimator) MulRelinNew(op0 *Element, op1 rlwe.Operand) (op2 *Element, err error){
+func (e Estimator) MulRelinNew(op0 *Element, op1 rlwe.Operand) (op2 *Element, err error) {
 
-	if op2, err = e.MulNew(op0, op1); err != nil{
+	if op2, err = e.MulNew(op0, op1); err != nil {
 		return nil, fmt.Errorf("e.MulNew: %w", err)
 	}
 
-	if err = e.Relinearize(op2, op2); err != nil{
+	if err = e.Relinearize(op2, op2); err != nil {
 		return nil, fmt.Errorf("e.Relinearize: %w", err)
 	}
 
 	return
 }
 
-func (e Estimator) MulNew(op0 *Element, op1 rlwe.Operand) (op2 *Element, err error){
+func (e Estimator) MulNew(op0 *Element, op1 rlwe.Operand) (op2 *Element, err error) {
 	op2 = op0.CopyNew()
 	return op2, e.Mul(op0, op1, op2)
 }
@@ -259,11 +259,11 @@ func (e Estimator) Mul(op0 *Element, op1 rlwe.Operand, op2 *Element) (err error)
 		// m0 * m1
 		m00 := op0.Value[0] // (m0 + e00)
 		m10 := op1.Value[0] // (m1 + e10)
-		m20 := op2.Value[0]   // (m2 + e20)
+		m20 := op2.Value[0] // (m2 + e20)
 
 		e01 := op0.Value[1] // e01
 		e11 := op1.Value[1] // e11
-		e21 := op2.Value[1]   // e21
+		e21 := op2.Value[1] // e21
 
 		e22 := op2.Value[2] // e22
 
@@ -284,7 +284,7 @@ func (e Estimator) Mul(op0 *Element, op1 rlwe.Operand, op2 *Element) (err error)
 		}
 
 		op2.Scale = op0.Scale.Mul(op1.Scale)
-		op2.Level = utils.Min(op0.Level, op1.Level)
+		op2.Level = min(op0.Level, op1.Level)
 		op2.Degree = op0.Degree + op1.Degree
 
 	case complex128, float64, int, int64, uint, uint64, *big.Int, *big.Float, *bignum.Complex:
@@ -292,8 +292,8 @@ func (e Estimator) Mul(op0 *Element, op1 rlwe.Operand, op2 *Element) (err error)
 		bComplex := bignum.ToComplex(op1, op2.Value[0][0].Prec())
 
 		if !bComplex.IsInt() {
-			bComplex[0].Mul(bComplex[0], e.Q[op2.Level])
-			bComplex[1].Mul(bComplex[1], e.Q[op2.Level])
+			bComplex[0].Mul(bComplex[0], &e.Q[op2.Level])
+			bComplex[1].Mul(bComplex[1], &e.Q[op2.Level])
 			op2.Scale = op0.Scale.Mul(rlwe.NewScale(e.Q[op2.Level]))
 		} else {
 			op2.Scale = op0.Scale
@@ -316,9 +316,9 @@ func (e Estimator) Mul(op0 *Element, op1 rlwe.Operand, op2 *Element) (err error)
 		scale := e.Q[op2.Level]
 		op2.Scale = op0.Scale.Mul(rlwe.NewScale(scale))
 
-		for i := range op1{
-			bComplex[0].Mul(op1[i][0], scale)
-			bComplex[1].Mul(op1[i][1], scale)
+		for i := range op1 {
+			bComplex[0].Mul(op1[i][0], &scale)
+			bComplex[1].Mul(op1[i][1], &scale)
 			for j := 0; j < op0.Degree+1; j++ {
 				mul(op0.Value[j][i], bComplex, op2.Value[j][i])
 			}
@@ -412,8 +412,8 @@ func (e Estimator) MulThenAdd(op0 *Element, op1 rlwe.Operand, op2 *Element) (err
 
 	case complex128, float64, int, int64, uint, uint64, *big.Int, *big.Float, *bignum.Complex:
 
-		op2.Degree = utils.Max(op2.Degree, op0.Degree)
-		op2.Level = utils.Min(op2.Level, op0.Level)
+		op2.Degree = max(op2.Degree, op0.Degree)
+		op2.Level = min(op2.Level, op0.Level)
 
 		bComplex := bignum.ToComplex(op1, op2.Value[0][0].Prec())
 
@@ -428,13 +428,13 @@ func (e Estimator) MulThenAdd(op0 *Element, op1 rlwe.Operand, op2 *Element) (err
 			} else {
 				scaleRLWE = rlwe.NewScale(e.Q[op2.Level])
 
-				for i := 1; i < e.Parameters.Parameters.LevelsConsumedPerRescaling(); i++ {
+				for i := 1; i < e.Parameters.LevelsConsumedPerRescaling(); i++ {
 					scaleRLWE = scaleRLWE.Mul(rlwe.NewScale(e.Q[op2.Level-i]))
 				}
 
 				scaleInt := new(big.Int)
 				scaleRLWE.Value.Int(scaleInt)
-				if err = e.Mul(op2, scaleInt, op2); err != nil{
+				if err = e.Mul(op2, scaleInt, op2); err != nil {
 					return
 				}
 
@@ -462,21 +462,20 @@ func (e Estimator) MulThenAdd(op0 *Element, op1 rlwe.Operand, op2 *Element) (err
 		}
 	case []*bignum.Complex:
 
-		bComplex := &bignum.Complex{new(big.Float).SetPrec(prec), new(big.Float).SetPrec(prec)}
+		var bComplex, acc bignum.Complex
 
-		scale := e.Q[op2.Level]
+		scale := &e.Q[op2.Level]
 		op2.Scale = op0.Scale.Mul(rlwe.NewScale(scale))
 
-		acc := bignum.NewComplex()
 		r := e.RoundingNoise()
 
-		for i := range op1{
+		for i := range op1 {
 			bComplex[0].Mul(op1[i][0], scale)
 			bComplex[1].Mul(op1[i][1], scale)
-			bComplex.Add(bComplex, r[i])
+			bComplex.Add(&bComplex, r[i])
 			for j := 0; j < op0.Degree+1; j++ {
-				mul(op0.Value[j][i], bComplex, acc)
-				op2.Value[j][i].Add(op2.Value[j][i], acc)
+				mul(op0.Value[j][i], &bComplex, &acc)
+				op2.Value[j][i].Add(op2.Value[j][i], &acc)
 			}
 		}
 
@@ -488,21 +487,21 @@ func (e Estimator) MulThenAdd(op0 *Element, op1 rlwe.Operand, op2 *Element) (err
 }
 
 func (e Estimator) ScaleUp(op0 *Element, scale rlwe.Scale) (err error) {
-	if err = e.Mul(op0, scale.Uint64(), op0); err != nil{
+	if err = e.Mul(op0, scale.Uint64(), op0); err != nil {
 		return
 	}
 	op0.Scale = op0.Scale.Mul(scale)
 	return
 }
 
-func (e Estimator) SetScale(op0 *Element, scale rlwe.Scale) (err error){
+func (e Estimator) SetScale(op0 *Element, scale rlwe.Scale) (err error) {
 	ratioFlo := scale.Div(op0.Scale).Value
-	if err = e.Mul(op0, &ratioFlo, op0); err != nil{
+	if err = e.Mul(op0, &ratioFlo, op0); err != nil {
 		return
 	}
 
-	if !ratioFlo.IsInt(){
-		if err = e.Rescale(op0, op0); err != nil{
+	if !ratioFlo.IsInt() {
+		if err = e.Rescale(op0, op0); err != nil {
 			return
 		}
 	}
@@ -511,17 +510,17 @@ func (e Estimator) SetScale(op0 *Element, scale rlwe.Scale) (err error){
 	return
 }
 
-func (e Estimator) KeySwitch(op0 *Element, sk []*bignum.Complex) (err error){
+func (e Estimator) KeySwitch(op0 *Element, sk []*bignum.Complex) (err error) {
 	if op0.Degree != 1 {
 		return fmt.Errorf("degree != 1")
 	}
 
 	e.AddKeySwitchingNoise(op0, sk)
 
-	return 
+	return
 }
 
-func (e Estimator) RotateNew(op0 *Element, k int) (op1 *Element, err error){
+func (e Estimator) RotateNew(op0 *Element, k int) (op1 *Element, err error) {
 	op1 = op0.CopyNew()
 	return op1, e.Rotate(op1, k, op1)
 }
@@ -532,24 +531,24 @@ func (e Estimator) Rotate(op0 *Element, k int, op1 *Element) (err error) {
 		return fmt.Errorf("degree != 1")
 	}
 
-	if op0 == op1{
+	if op0 == op1 {
 		// p.Value[1]: noise of the second component (s term)
 		// p.Sk[0]: sk^1
 		e.AddAutomorphismNoise(op1)
 		utils.RotateSliceInPlace(op1.Value[0], k)
 
-	}else{
+	} else {
 
 		e.SetToAutomorphismNoise(op1)
 
 		m0 := op0.Value[0]
 		m1 := op1.Value[0]
 
-		for ix, iy := 0, k; iy < len(m0); ix, iy = ix+1, iy+1{
+		for ix, iy := 0, k; iy < len(m0); ix, iy = ix+1, iy+1 {
 			m1[ix].Add(m1[ix], m0[iy])
 		}
 
-		for ix, iy := len(m0)-k, 0; iy < k; ix, iy = ix+1, iy+1{
+		for ix, iy := len(m0)-k, 0; iy < k; ix, iy = ix+1, iy+1 {
 			m1[ix].Add(m1[ix], m0[iy])
 		}
 
@@ -560,7 +559,7 @@ func (e Estimator) Rotate(op0 *Element, k int, op1 *Element) (err error) {
 	return
 }
 
-func (e Estimator) ConjugateNew(op0 *Element) (op1 *Element, err error){
+func (e Estimator) ConjugateNew(op0 *Element) (op1 *Element, err error) {
 	op1 = op0.CopyNew()
 	return op1, e.Conjugate(op1, op1)
 }
@@ -571,7 +570,7 @@ func (e Estimator) Conjugate(op0, op1 *Element) (err error) {
 		return fmt.Errorf("degree != 1")
 	}
 
-	if op0 == op1{
+	if op0 == op1 {
 
 		// p.Value[1]: noise of the second component (s term)
 		// p.Sk[0]: sk^1
@@ -582,12 +581,12 @@ func (e Estimator) Conjugate(op0, op1 *Element) (err error) {
 			m1[i][1].Neg(m1[i][1])
 		}
 
-	}else{
+	} else {
 
-		for i := 0; i < 2; i++{
+		for i := 0; i < 2; i++ {
 			m0 := op0.Value[i]
 			m1 := op1.Value[i]
-			for j := range m0{
+			for j := range m0 {
 				m1[j][0].Set(m0[j][0])
 				m1[j][1].Set(m0[j][1])
 			}
@@ -608,7 +607,7 @@ func (e Estimator) Conjugate(op0, op1 *Element) (err error) {
 	return
 }
 
-func (e Estimator) RelinearizeNew(op0 *Element) (op1 *Element, err error){
+func (e Estimator) RelinearizeNew(op0 *Element) (op1 *Element, err error) {
 	op1 = op0.CopyNew()
 	return op1, e.Relinearize(op1, op1)
 }
@@ -619,11 +618,11 @@ func (e Estimator) Relinearize(op0, op1 *Element) (err error) {
 		return fmt.Errorf("degree != 2")
 	}
 
-	if op0 != op1{
-		for i := 0; i < 2; i++{
+	if op0 != op1 {
+		for i := 0; i < 2; i++ {
 			m0 := op0.Value[i]
 			m1 := op1.Value[i]
-			for j := range m0{
+			for j := range m0 {
 				m1[j].Set(m0[j])
 			}
 		}
@@ -676,17 +675,17 @@ func (e Estimator) ModDown(op0, op1 *Element) {
 
 // Rescale divides by Q[level] and adds rounding noise.
 // Returns an error if already at level 0.
-func (e Estimator) Rescale(op0, op1 *Element) (err error){
+func (e Estimator) Rescale(op0, op1 *Element) (err error) {
 	if op0.Level == 0 {
 		return fmt.Errorf("element already at level 0")
 	}
 
 	Q := e.Q[op0.Level]
 
-	e.DivideAndAddRoundingNoise(op0, Q, op1)
+	e.DivideAndAddRoundingNoise(op0, &Q, op1)
 
 	op1.Scale = op0.Scale.Div(rlwe.NewScale(Q))
-	op1.Level = op0.Level-1
+	op1.Level = op0.Level - 1
 	return
 }
 

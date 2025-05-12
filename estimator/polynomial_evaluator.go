@@ -5,26 +5,25 @@ import (
 	"math/bits"
 	"runtime"
 
-	"github.com/tuneinsight/lattigo/v5/core/rlwe"
-	"github.com/tuneinsight/lattigo/v5/he"
-	"github.com/tuneinsight/lattigo/v5/he/hefloat"
-	"github.com/tuneinsight/lattigo/v5/utils"
-	"github.com/tuneinsight/lattigo/v5/utils/bignum"
+	ckkspoly "github.com/tuneinsight/lattigo/v6/circuits/ckks/polynomial"
+	"github.com/tuneinsight/lattigo/v6/circuits/common/polynomial"
+	"github.com/tuneinsight/lattigo/v6/core/rlwe"
+	"github.com/tuneinsight/lattigo/v6/utils/bignum"
 )
 
 func (e Estimator) EvaluatePolynomialNew(elIn *Element, poly interface{}, targetScale rlwe.Scale) (elOut *Element, err error) {
 
-	var polyVec he.PolynomialVector
+	var polyVec polynomial.PolynomialVector
 	switch poly := poly.(type) {
-	case hefloat.Polynomial:
-		polyVec = he.PolynomialVector{Value: []he.Polynomial{he.Polynomial(poly)}}
-	case hefloat.PolynomialVector:
-		polyVec = he.PolynomialVector(poly)
+	case ckkspoly.Polynomial:
+		polyVec = polynomial.PolynomialVector{Value: []polynomial.Polynomial{polynomial.Polynomial(poly)}}
+	case ckkspoly.PolynomialVector:
+		polyVec = polynomial.PolynomialVector(poly)
 	case bignum.Polynomial:
-		polyVec = he.PolynomialVector{Value: []he.Polynomial{{Polynomial: poly, MaxDeg: poly.Degree(), Lead: true, Lazy: false}}}
-	case he.Polynomial:
-		polyVec = he.PolynomialVector{Value: []he.Polynomial{poly}}
-	case he.PolynomialVector:
+		polyVec = polynomial.PolynomialVector{Value: []polynomial.Polynomial{{Polynomial: poly, MaxDeg: poly.Degree(), Lead: true, Lazy: false}}}
+	case polynomial.Polynomial:
+		polyVec = polynomial.PolynomialVector{Value: []polynomial.Polynomial{poly}}
+	case polynomial.PolynomialVector:
 		polyVec = poly
 	default:
 		return nil, fmt.Errorf("cannot Polynomial: invalid polynomial type, must be either bignum.Polynomial, he.Polynomial or he.PolynomialVector, but is %T", poly)
@@ -55,9 +54,9 @@ func (e Estimator) EvaluatePolynomialNew(elIn *Element, poly interface{}, target
 		}
 	}
 
-	PS := polyVec.GetPatersonStockmeyerPolynomial(*e.Parameters.Parameters.GetRLWEParameters(), powerbasis.Value[1].Level, powerbasis.Value[1].Scale, targetScale, &SimEvaluator{e.Parameters, e.Parameters.Parameters.LevelsConsumedPerRescaling()})
+	PS := polyVec.PatersonStockmeyerPolynomial(*e.Parameters.Parameters.GetRLWEParameters(), powerbasis.Value[1].Level, powerbasis.Value[1].Scale, targetScale, SimEvaluator{e.Parameters, e.Parameters.LevelsConsumedPerRescaling()})
 
-	coeffGetter := he.CoefficientGetter[*bignum.Complex](&hefloat.CoefficientGetter{Values: make([]*bignum.Complex, e.Parameters.Parameters.MaxSlots())})
+	coeffGetter := polynomial.CoefficientGetter[*bignum.Complex](ckkspoly.NewEvaluator(e.Parameters, nil).CoefficientGetter)
 
 	if elOut, err = EvaluatePatersonStockmeyerPolynomialVector(PS, coeffGetter, *powerbasis, e); err != nil {
 		return nil, err
@@ -77,7 +76,7 @@ type BabyStep struct {
 }
 
 // EvaluatePatersonStockmeyerPolynomialVector evaluates a pre-decomposed PatersonStockmeyerPolynomialVector on a pre-computed power basis [1, X^{1}, X^{2}, ..., X^{2^{n}}, X^{2^{n+1}}, ..., X^{2^{m}}]
-func EvaluatePatersonStockmeyerPolynomialVector[T any](poly he.PatersonStockmeyerPolynomialVector, cg he.CoefficientGetter[T], pb PowerBasis, e Estimator) (res *Element, err error) {
+func EvaluatePatersonStockmeyerPolynomialVector[T uint64 | *bignum.Complex](poly polynomial.PatersonStockmeyerPolynomialVector, cg polynomial.CoefficientGetter[T], pb PowerBasis, e Estimator) (res *Element, err error) {
 
 	split := len(poly.Value[0].Value)
 
@@ -127,12 +126,12 @@ func EvaluatePatersonStockmeyerPolynomialVector[T any](poly he.PatersonStockmeye
 	}
 
 	if babySteps[0].Value.Degree == 2 {
-		if err = e.Relinearize(babySteps[0].Value, babySteps[0].Value); err != nil{
+		if err = e.Relinearize(babySteps[0].Value, babySteps[0].Value); err != nil {
 			return nil, fmt.Errorf("e.Relinearize: %w", err)
 		}
 	}
 
-	if err = e.Rescale(babySteps[0].Value, babySteps[0].Value); err != nil{
+	if err = e.Rescale(babySteps[0].Value, babySteps[0].Value); err != nil {
 		return nil, fmt.Errorf("e.Rescale: %w", err)
 	}
 
@@ -141,12 +140,12 @@ func EvaluatePatersonStockmeyerPolynomialVector[T any](poly he.PatersonStockmeye
 
 // EvaluateBabyStep evaluates a baby-step of the PatersonStockmeyer polynomial evaluation algorithm, i.e. the inner-product between the precomputed
 // powers [1, T, T^2, ..., T^{n-1}] and the coefficients [ci0, ci1, ci2, ..., ci{n-1}].
-func EvaluateBabyStep[T any](i int, poly he.PatersonStockmeyerPolynomialVector, cg he.CoefficientGetter[T], pb PowerBasis, e Estimator) (ct *BabyStep, err error) {
+func EvaluateBabyStep[T uint64 | *bignum.Complex](i int, poly polynomial.PatersonStockmeyerPolynomialVector, cg polynomial.CoefficientGetter[T], pb PowerBasis, e Estimator) (ct *BabyStep, err error) {
 
 	nbPoly := len(poly.Value)
 
-	polyVec := he.PolynomialVector{
-		Value:   make([]he.Polynomial, nbPoly),
+	polyVec := polynomial.PolynomialVector{
+		Value:   make([]polynomial.Polynomial, nbPoly),
 		Mapping: poly.Mapping,
 	}
 
@@ -204,16 +203,16 @@ func EvaluateGianStep(i int, giantSteps []int, babySteps []*BabyStep, pb PowerBa
 func EvaluateMonomial(a, b, xpow *Element, e Estimator) (err error) {
 
 	if b.Degree == 2 {
-		if err = e.Relinearize(b, b); err != nil{
+		if err = e.Relinearize(b, b); err != nil {
 			return fmt.Errorf("e.Relinearize: %w", err)
 		}
 	}
 
-	if err = e.Rescale(b, b); err != nil{
+	if err = e.Rescale(b, b); err != nil {
 		return fmt.Errorf("e.Rescale: %w", err)
 	}
 
-	if err = e.Mul(b, xpow, b); err != nil{
+	if err = e.Mul(b, xpow, b); err != nil {
 		return fmt.Errorf("e.Mul: %w", err)
 	}
 
@@ -221,15 +220,15 @@ func EvaluateMonomial(a, b, xpow *Element, e Estimator) (err error) {
 		return fmt.Errorf("evalMonomial: scale discrepency: (rescale(b) * X^{n}).Scale = %v != a.Scale = %v", &a.Scale.Value, &b.Scale.Value)
 	}
 
-	if err = e.Add(b, a, b); err != nil{
+	if err = e.Add(b, a, b); err != nil {
 		return fmt.Errorf("e.Add: %w", err)
 	}
 
 	return
 }
 
-// EvaluatePolynomialVectorFromPowerBasis a method that complies to the interface he.PolynomialVectorEvaluator. This method evaluates P(ct) = sum c_i * ct^{i}.
-func EvaluatePolynomialVectorFromPowerBasis[T any](targetLevel int, pol he.PolynomialVector, cg he.CoefficientGetter[T], pb PowerBasis, targetScale rlwe.Scale, e Estimator) (res *Element, err error) {
+// EvaluatePolynomialVectorFromPowerBasis a method that complies to the interface polynomial.PolynomialVectorEvaluator. This method evaluates P(ct) = sum c_i * ct^{i}.
+func EvaluatePolynomialVectorFromPowerBasis[T uint64 | *bignum.Complex](targetLevel int, pol polynomial.PolynomialVector, cg polynomial.CoefficientGetter[T], pb PowerBasis, targetScale rlwe.Scale, e Estimator) (res *Element, err error) {
 
 	// Map[int] of the powers [X^{0}, X^{1}, X^{2}, ...]
 	X := pb.Value
@@ -250,7 +249,7 @@ func EvaluatePolynomialVectorFromPowerBasis[T any](targetLevel int, pol he.Polyn
 	maximumCiphertextDegree := 0
 	for i := pol.Value[0].Degree(); i > 0; i-- {
 		if x, ok := X[i]; ok {
-			maximumCiphertextDegree = utils.Max(maximumCiphertextDegree, x.Degree)
+			maximumCiphertextDegree = max(maximumCiphertextDegree, x.Degree)
 		}
 	}
 
@@ -263,7 +262,7 @@ func EvaluatePolynomialVectorFromPowerBasis[T any](targetLevel int, pol he.Polyn
 			res = e.NewElement(nil, 1, targetLevel, targetScale)
 
 			if even {
-				if err = e.Add(res, cg.GetVectorCoefficient(pol, 0), res); err != nil{
+				if err = e.Add(res, cg.GetVectorCoefficient(pol, 0), res); err != nil {
 					return nil, fmt.Errorf("e.Add: %w", err)
 				}
 			}
@@ -275,7 +274,7 @@ func EvaluatePolynomialVectorFromPowerBasis[T any](targetLevel int, pol he.Polyn
 		res = e.NewElement(nil, maximumCiphertextDegree, targetLevel, targetScale)
 
 		if even {
-			if err = e.Add(res, cg.GetVectorCoefficient(pol, 0), res); err != nil{
+			if err = e.Add(res, cg.GetVectorCoefficient(pol, 0), res); err != nil {
 				return nil, fmt.Errorf("e.Add: %w", err)
 			}
 		}
@@ -283,7 +282,7 @@ func EvaluatePolynomialVectorFromPowerBasis[T any](targetLevel int, pol he.Polyn
 		// Loops starting from the highest degree coefficient
 		for key := pol.Value[0].Degree(); key > 0; key-- {
 			if !(even || odd) || (key&1 == 0 && even) || (key&1 == 1 && odd) {
-				if err = e.MulThenAdd(X[key], cg.GetVectorCoefficient(pol, key), res); err != nil{
+				if err = e.MulThenAdd(X[key], cg.GetVectorCoefficient(pol, key), res); err != nil {
 					return nil, fmt.Errorf("e.MulThenAdd: %w", err)
 				}
 			}
@@ -296,7 +295,7 @@ func EvaluatePolynomialVectorFromPowerBasis[T any](targetLevel int, pol he.Polyn
 			res = e.NewElement(nil, 1, targetLevel, targetScale)
 
 			if even {
-				if err = e.Add(res, cg.GetSingleCoefficient(pol.Value[0], 0), res); err != nil{
+				if err = e.Add(res, cg.GetSingleCoefficient(pol.Value[0], 0), res); err != nil {
 					return nil, fmt.Errorf("e.Add: %w", err)
 				}
 			}
@@ -307,7 +306,7 @@ func EvaluatePolynomialVectorFromPowerBasis[T any](targetLevel int, pol he.Polyn
 		res = e.NewElement(nil, maximumCiphertextDegree, targetLevel, targetScale)
 
 		if even {
-			if err = e.Add(res, cg.GetSingleCoefficient(pol.Value[0], 0), res); err != nil{
+			if err = e.Add(res, cg.GetSingleCoefficient(pol.Value[0], 0), res); err != nil {
 				return nil, fmt.Errorf("e.Add: %w", err)
 			}
 		}
@@ -315,7 +314,7 @@ func EvaluatePolynomialVectorFromPowerBasis[T any](targetLevel int, pol he.Polyn
 		for key := pol.Value[0].Degree(); key > 0; key-- {
 			if key != 0 && (!(even || odd) || (key&1 == 0 && even) || (key&1 == 1 && odd)) {
 				// MulScalarAndAdd automatically scales c to match the scale of res.
-				if err = e.MulThenAdd(X[key], cg.GetSingleCoefficient(pol.Value[0], key), res); err != nil{
+				if err = e.MulThenAdd(X[key], cg.GetSingleCoefficient(pol.Value[0], key), res); err != nil {
 					return nil, fmt.Errorf("e.MulThenAdd: %w", err)
 				}
 			}

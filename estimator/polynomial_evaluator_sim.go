@@ -4,11 +4,10 @@ import (
 	"math/big"
 	"math/bits"
 
-	"github.com/tuneinsight/lattigo/v5/core/rlwe"
-	"github.com/tuneinsight/lattigo/v5/he"
-	"github.com/tuneinsight/lattigo/v5/he/hefloat"
-	"github.com/tuneinsight/lattigo/v5/utils"
-	"github.com/tuneinsight/lattigo/v5/utils/bignum"
+	he "github.com/tuneinsight/lattigo/v6/circuits/common/polynomial"
+	"github.com/tuneinsight/lattigo/v6/core/rlwe"
+	"github.com/tuneinsight/lattigo/v6/schemes/ckks"
+	"github.com/tuneinsight/lattigo/v6/utils/bignum"
 )
 
 // simEvaluator is a struct used to pre-computed the scaling
@@ -17,7 +16,7 @@ import (
 // with dummy operands.
 // This struct implements the interface he.SimEvaluator.
 type SimEvaluator struct {
-	params                     hefloat.Parameters
+	params                     ckks.Parameters
 	levelsConsumedPerRescaling int
 }
 
@@ -37,7 +36,7 @@ func (d SimEvaluator) Rescale(op0 *he.SimOperand) {
 // MulNew multiplies two he.SimOperand, stores the result the target he.SimOperand and returns the result.
 func (d SimEvaluator) MulNew(op0, op1 *he.SimOperand) (opOut *he.SimOperand) {
 	opOut = new(he.SimOperand)
-	opOut.Level = utils.Min(op0.Level, op1.Level)
+	opOut.Level = min(op0.Level, op1.Level)
 	opOut.Scale = op0.Scale.Mul(op1.Scale)
 	return
 }

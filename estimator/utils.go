@@ -1,17 +1,20 @@
 package estimator
 
 import (
+	crypto "crypto/rand"
+	"encoding/binary"
 	"fmt"
 	"math"
 	"math/big"
 	"math/rand"
-	"github.com/tuneinsight/lattigo/v5/core/rlwe"
-	"github.com/tuneinsight/lattigo/v5/he/hefloat"
-	"github.com/tuneinsight/lattigo/v5/utils/bignum"
-	"github.com/tuneinsight/lattigo/v5/utils/sampling"
+
+	"github.com/tuneinsight/lattigo/v6/core/rlwe"
+	"github.com/tuneinsight/lattigo/v6/schemes/ckks"
+	hefloat "github.com/tuneinsight/lattigo/v6/schemes/ckks"
+	"github.com/tuneinsight/lattigo/v6/utils/bignum"
 )
 
-func (e Estimator) NewTestVector(ecd *hefloat.Encoder, enc *rlwe.Encryptor, a, b complex128, trunc... uint) (values []*bignum.Complex, el *Element, pt *rlwe.Plaintext, ct *rlwe.Ciphertext) {
+func (e Estimator) NewTestVector(ecd *ckks.Encoder, key rlwe.EncryptionKey, a, b complex128, trunc ...uint) (values []*bignum.Complex, el *Element, pt *rlwe.Plaintext, ct *rlwe.Ciphertext) {
 
 	params := e.Parameters
 
@@ -19,10 +22,11 @@ func (e Estimator) NewTestVector(ecd *hefloat.Encoder, enc *rlwe.Encryptor, a, b
 
 	values = make([]*bignum.Complex, params.MaxSlots())
 
+	source := NewTestRand()
 	for i := range values {
 		values[i] = &bignum.Complex{
-			bignum.NewFloat(sampling.RandFloat64(real(a), real(b)), prec),
-			bignum.NewFloat(sampling.RandFloat64(imag(a), imag(b)), prec),
+			bignum.NewFloat(source.Float64(real(a), real(b)), prec),
+			bignum.NewFloat(source.Float64(imag(a), imag(b)), prec),
 		}
 	}
 
@@ -33,19 +37,19 @@ func (e Estimator) NewTestVector(ecd *hefloat.Encoder, enc *rlwe.Encryptor, a, b
 	e.AddEncodingNoise(el)
 
 	pt = hefloat.NewPlaintext(params, params.MaxLevel())
-	if err := ecd.Encode(values, pt); err != nil{
+	if err := ecd.Encode(values, pt); err != nil {
 		panic(err)
 	}
 
-	if len(trunc) != 0{
+	if len(trunc) != 0 {
 		truncval := trunc[0]
 		coeffs := make([]*big.Int, params.N())
-		for i := range coeffs{
+		for i := range coeffs {
 			coeffs[i] = new(big.Int)
 		}
 		params.RingQ().INTT(pt.Value, pt.Value)
 		params.RingQ().PolyToBigintCentered(pt.Value, 1, coeffs)
-		for i := range coeffs{
+		for i := range coeffs {
 			coeffs[i].Rsh(coeffs[i], truncval)
 			coeffs[i].Lsh(coeffs[i], truncval)
 		}
@@ -53,31 +57,32 @@ func (e Estimator) NewTestVector(ecd *hefloat.Encoder, enc *rlwe.Encryptor, a, b
 		params.RingQ().NTT(pt.Value, pt.Value)
 	}
 
-	if enc != nil{
+	if key != nil {
+		enc := rlwe.NewEncryptor(params, key)
 		ct, _ = enc.EncryptNew(pt)
-		switch enc.KeyType().(type) {
+		switch key.(type) {
 		case *rlwe.SecretKey:
 			e.AddEncryptionNoiseSk(el)
 		case *rlwe.PublicKey:
 			e.AddEncryptionNoisePk(el)
 		default:
-			panic("INVALID ENCRYPION KEY")
+			panic("invalid encrypion key")
 		}
 	}
-	
+
 	return
 }
 
-func (e Estimator) TruncatePlaintext(pt *rlwe.Plaintext, trunc *big.Int) (coeffs []*big.Int){
+func (e Estimator) TruncatePlaintext(pt *rlwe.Plaintext, trunc *big.Int) (coeffs []*big.Int) {
 	params := e.Parameters
 	coeffs = make([]*big.Int, params.N())
-	for i := range coeffs{
+	for i := range coeffs {
 		coeffs[i] = new(big.Int)
 	}
 	rQ := params.RingQ().AtLevel(pt.Level())
 	rQ.INTT(pt.Value, pt.Value)
 	rQ.PolyToBigintCentered(pt.Value, 1, coeffs)
-	for i := range coeffs{
+	for i := range coeffs {
 		bignum.DivRound(coeffs[i], trunc, coeffs[i])
 		coeffs[i].Mul(coeffs[i], trunc)
 	}
@@ -86,7 +91,7 @@ func (e Estimator) TruncatePlaintext(pt *rlwe.Plaintext, trunc *big.Int) (coeffs
 	return coeffs
 }
 
-func (e Estimator) NewTestVectorFromSeed(ecd *hefloat.Encoder, enc *rlwe.Encryptor, a, b complex128, seed int64, trunc... *big.Int) (values []*bignum.Complex, el *Element, pt *rlwe.Plaintext, ct *rlwe.Ciphertext) {
+func (e Estimator) NewTestVectorFromSeed(ecd *hefloat.Encoder, key rlwe.EncryptionKey, a, b complex128, source TestRand, trunc ...*big.Int) (values []*bignum.Complex, el *Element, pt *rlwe.Plaintext, ct *rlwe.Ciphertext) {
 
 	params := e.Parameters
 
@@ -94,16 +99,10 @@ func (e Estimator) NewTestVectorFromSeed(ecd *hefloat.Encoder, enc *rlwe.Encrypt
 
 	values = make([]*bignum.Complex, params.MaxSlots())
 
-	r := rand.New(rand.NewSource(seed))
-
-	Float64 := func(min, max float64) float64 {
-		return (max-min) * r.Float64() + min
-	}
-
 	for i := range values {
 		values[i] = &bignum.Complex{
-			bignum.NewFloat(Float64(real(a), real(b)), prec),
-			bignum.NewFloat(Float64(imag(a), imag(b)), prec),
+			bignum.NewFloat(source.Float64(real(a), real(b)), prec),
+			bignum.NewFloat(source.Float64(imag(a), imag(b)), prec),
 		}
 	}
 
@@ -114,26 +113,30 @@ func (e Estimator) NewTestVectorFromSeed(ecd *hefloat.Encoder, enc *rlwe.Encrypt
 	e.AddEncodingNoise(el)
 
 	pt = hefloat.NewPlaintext(params, params.MaxLevel())
-	if err := ecd.Encode(values, pt); err != nil{
+	if err := ecd.Encode(values, pt); err != nil {
 		panic(err)
 	}
 
-	if len(trunc) != 0{
+	if len(trunc) != 0 {
 		e.TruncatePlaintext(pt, trunc[0])
 	}
 
-	if enc != nil{
-		ct, _ = enc.EncryptNew(pt)
-		switch enc.KeyType().(type) {
+	if key != nil {
+		enc := rlwe.NewEncryptor(params, key)
+		ct = hefloat.NewCiphertext(params, 1, params.MaxLevel())
+		if err := enc.Encrypt(pt, ct); err != nil {
+			panic(err)
+		}
+		switch key.(type) {
 		case *rlwe.SecretKey:
 			e.AddEncryptionNoiseSk(el)
 		case *rlwe.PublicKey:
 			e.AddEncryptionNoisePk(el)
 		default:
-			panic("INVALID ENCRYPION KEY")
+			panic("invalid encrypion key")
 		}
 	}
-	
+
 	return
 }
 
@@ -141,13 +144,13 @@ const (
 	prec = uint(128)
 )
 
-func Round(x *big.Float){
+func Round(x *big.Float) {
 	x.Add(x, new(big.Float).SetFloat64(0.5*float64(x.Sign())))
 	xint, _ := x.Int(nil)
 	x.SetInt(xint)
 }
 
-func Truncate(x *big.Float, delta *big.Float){
+func Truncate(x *big.Float, delta *big.Float) {
 	x.Mul(x, delta)
 	Round(x)
 	x.Quo(x, delta)
@@ -185,23 +188,23 @@ func NewFloat(x interface{}) (s *big.Float) {
 	}
 }
 
-func Log2MIN(x []*bignum.Complex) (real, img float64){
+func Log2MIN(x []*bignum.Complex) (real, img float64) {
 
 	minR := new(big.Float)
 	minI := new(big.Float)
 	tmp := new(big.Float)
 
-	for i := range x{
+	for i := range x {
 
 		tmp.Abs(x[i][0])
 
-		if minR.Cmp(tmp) == 1{
+		if minR.Cmp(tmp) == 1 {
 			minR.Set(tmp)
 		}
 
 		tmp.Abs(x[i][1])
 
-		if minI.Cmp(tmp) == 1{
+		if minI.Cmp(tmp) == 1 {
 			minI.Set(tmp)
 		}
 	}
@@ -212,23 +215,23 @@ func Log2MIN(x []*bignum.Complex) (real, img float64){
 	return math.Log2(minRF64), math.Log2(minIF64)
 }
 
-func Log2MAX(x []*bignum.Complex) (real, img float64){
+func Log2MAX(x []*bignum.Complex) (real, img float64) {
 
 	maxR := new(big.Float)
 	maxI := new(big.Float)
 	tmp := new(big.Float)
 
-	for i := range x{
+	for i := range x {
 
 		tmp.Abs(x[i][0])
 
-		if maxR.Cmp(tmp) == -1{
+		if maxR.Cmp(tmp) == -1 {
 			maxR.Set(tmp)
 		}
 
 		tmp.Abs(x[i][1])
 
-		if maxI.Cmp(tmp) == -1{
+		if maxI.Cmp(tmp) == -1 {
 			maxI.Set(tmp)
 		}
 	}
@@ -239,13 +242,13 @@ func Log2MAX(x []*bignum.Complex) (real, img float64){
 	return math.Log2(maxRF64), math.Log2(maxIF64)
 }
 
-func Log2AVG(x []*bignum.Complex) (real, img float64){
+func Log2AVG(x []*bignum.Complex) (real, img float64) {
 	n := new(big.Float).SetInt64(int64(len(x)))
 
 	meanR := new(big.Float).SetPrec(x[0].Prec())
 	meanI := new(big.Float).SetPrec(x[0].Prec())
 
-	for i := range x{
+	for i := range x {
 		meanR.Add(meanR, x[i][0])
 		meanI.Add(meanI, x[i][1])
 	}
@@ -259,14 +262,14 @@ func Log2AVG(x []*bignum.Complex) (real, img float64){
 	return avgRF64, avgIF64
 }
 
-func Log2STD(x []*bignum.Complex) (real, img float64){
+func Log2STD(x []*bignum.Complex) (real, img float64) {
 
 	n := new(big.Float).SetInt64(int64(len(x)))
 
 	meanR := new(big.Float).SetPrec(x[0].Prec())
 	meanI := new(big.Float).SetPrec(x[0].Prec())
 
-	for i := range x{
+	for i := range x {
 		meanR.Add(meanR, x[i][0])
 		meanI.Add(meanI, x[i][1])
 	}
@@ -278,7 +281,7 @@ func Log2STD(x []*bignum.Complex) (real, img float64){
 	stdI := new(big.Float).SetPrec(x[0].Prec())
 	tmp := new(big.Float)
 
-	for i := range x{
+	for i := range x {
 		tmp.Sub(x[i][0], meanR)
 		tmp.Mul(tmp, tmp)
 		stdR.Add(stdR, tmp)
@@ -292,4 +295,29 @@ func Log2STD(x []*bignum.Complex) (real, img float64){
 	stdIF64, _ := stdI.Sqrt(stdI).Float64()
 
 	return math.Log2(stdRF64), math.Log2(stdIF64)
+}
+
+type TestRand struct {
+	*rand.Rand
+}
+
+// NewTestRand creates a new **insecure** PRNG that can be optionally seeded for deterministic randomness.
+func NewTestRand(seed ...int64) TestRand {
+	var s int64
+	switch l := len(seed); l {
+	case 0:
+		err := binary.Read(crypto.Reader, binary.LittleEndian, &s)
+		if err != nil {
+			panic(fmt.Errorf("failed to generate seed: %v\n", err))
+		}
+	case 1:
+		s = seed[0]
+	default:
+		panic(fmt.Errorf("newtestrand expects < 2 arguments but %d was given", l))
+	}
+	return TestRand{rand.New(rand.NewSource(s))}
+}
+
+func (r TestRand) Float64(min, max float64) float64 {
+	return (max-min)*r.Rand.Float64() + min
 }
